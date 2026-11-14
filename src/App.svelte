@@ -14,7 +14,7 @@
   import { RHYTHM_MODES, styleName } from './lib/protocol/rhythm';
   import { expLabel } from './lib/protocol/exp';
   import { editor } from './lib/store.svelte';
-  import { askPresetName, downloadText, folderSupported } from './lib/files';
+  import { askPresetName, downloadText, errorText, folderSupported } from './lib/files';
   import { trimName } from './lib/arrange';
 
   const supported = GE150Pro.supported();
@@ -60,21 +60,30 @@
     if (!editor.live) return;
     const name = askPresetName(`Store to ${presetLabel(editor.live.index)} on the device. Preset name`, trimName(editor.live.name));
     if (name === null) return;
-    // an empty or unchanged name keeps the preset's name as it is (its stored bytes included)
-    await editor.store(name && name !== trimName(editor.live.name) ? name : undefined);
+    try {
+      // an empty or unchanged name keeps the preset's name as it is (its stored bytes included)
+      await editor.store(name && name !== trimName(editor.live.name) ? name : undefined);
+    } catch (err) {
+      notice = `The preset was not stored: ${errorText(err)}`;
+    }
   }
 
   async function rename() {
     if (!editor.live) return;
     const name = askPresetName('Rename preset', trimName(editor.live.name));
-    if (name && name !== trimName(editor.live.name)) await editor.rename(name);
+    if (!name || name === trimName(editor.live.name)) return;
+    try {
+      await editor.rename(name);
+    } catch (err) {
+      notice = `The preset was not renamed: ${errorText(err)}`;
+    }
   }
 
   async function chooseFolder() {
     try {
       await editor.chooseFolder();
     } catch (err) {
-      notice = `The folder could not be opened: ${err instanceof Error ? err.message : err}`;
+      notice = errorText(err);
     }
   }
 
@@ -90,7 +99,7 @@
     try {
       editor.importMo(await file.text());
     } catch (err) {
-      notice = err instanceof Error ? err.message : String(err);
+      notice = errorText(err);
     }
   }
 
@@ -99,7 +108,7 @@
     try {
       await editor.loadLocal(name);
     } catch (err) {
-      notice = `${name}: ${err instanceof Error ? err.message : String(err)}`;
+      notice = `${name}: ${errorText(err)}`;
     }
   }
 
@@ -111,9 +120,9 @@
 <div class="app">
   <header class="top">
     <div class="box preset-nav">
-      <button class="arrow" aria-label="Previous preset" disabled={!editor.device && !editor.demo} onclick={() => editor.step(-1)}>◀</button>
+      <button class="arrow" aria-label="Previous preset" disabled={!editor.online} onclick={() => editor.step(-1)}>◀</button>
       <button class="pname" title="Rename" disabled={!editor.live} onclick={rename}>{editor.live?.name ?? 'GE150 PRO'}{editor.dirty ? ' *' : ''}</button>
-      <button class="arrow" aria-label="Next preset" disabled={!editor.device && !editor.demo} onclick={() => editor.step(1)}>▶</button>
+      <button class="arrow" aria-label="Next preset" disabled={!editor.online} onclick={() => editor.step(1)}>▶</button>
     </div>
     <button class="box icon" title="Store preset to device" aria-label="Store preset" disabled={!editor.live} onclick={store}>
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 4h13l3 3v13H4z" /><path d="M8 4v5h8V4M7 20v-6h10v6" /></svg>
@@ -196,7 +205,7 @@
         </ul>
       {/if}
       <ol class="log">
-        {#each editor.log as e, i (i)}
+        {#each editor.log as e (e.seq)}
           <li class={e.dir}><code>{e.dir === 'out' ? '→' : '←'} {e.cmd.toString(16).padStart(2, '0')} {e.bytes}</code></li>
         {/each}
       </ol>
@@ -222,7 +231,7 @@
           {#each Array.from({ length: PRESET_COUNT }, (_, k) => k + 1) as i (i)}
             {@const origin = editor.originOf(editor.presets[i - 1])}
             <li>
-              <button class:active={i === editor.current} class:unused={origin === 'empty'} disabled={!editor.device && !editor.demo} onclick={() => editor.select(i)}>
+              <button class:active={i === editor.current} class:unused={origin === 'empty'} disabled={!editor.online} onclick={() => editor.select(i)}>
                 {paddedLabel(i)}&nbsp; {editor.presets[i - 1]?.name ?? ''}
                 {#if origin === 'modified'}<span class="mark modified" title="Modified: the original set has this name with another sound">M</span>{:else if origin === 'new'}<span class="mark new" title="New: not in the original set">N</span>{/if}
               </button>

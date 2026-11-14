@@ -7,7 +7,6 @@
 //
 //   node scripts/extract-factory.mjs ge150_pro_v2.1.4_mac.zip factory-presets
 import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
-import { createHash } from 'node:crypto';
 import { basename, join } from 'node:path';
 import { createServer } from 'vite';
 
@@ -25,14 +24,14 @@ if (existsSync(outDir)) {
 const vite = await createServer({ server: { middlewareMode: true }, appType: 'custom', logLevel: 'error' });
 try {
   const { moSet } = await vite.ssrLoadModule('/src/lib/arrange.ts');
-  const { factoryFromFile } = await vite.ssrLoadModule('/src/lib/firmware.ts');
+  const { factoryFromFile, sha256Hex } = await vite.ssrLoadModule('/src/lib/firmware.ts');
   const fw = new Uint8Array(readFileSync(fwPath));
   const got = await factoryFromFile(basename(fwPath), fw);
   if (!got) {
     console.error(`${basename(fwPath)}: the factory presets were not found (use Mooer's Mac package .zip, its .dmg, or the .mr)`);
     process.exit(1);
   }
-  const sha = createHash('sha256').update(fw).digest('hex');
+  const sha = await sha256Hex(fw);
   const files = await moSet(got.layout, {
     name: `GE150 Pro factory presets (firmware ${got.version})`,
     kind: 'original',

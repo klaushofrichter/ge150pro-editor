@@ -1,6 +1,6 @@
 // Conversion between device presets and the official editor's .mo (JSON) files.
 import { model } from '../catalog';
-import { EXP_ORDER, SLOT_COUNT, type ExpSettings, type ModuleState, type Preset } from './preset';
+import { EXP_ORDER, NAME_LENGTH, SLOT_COUNT, type ExpSettings, type ModuleState, type Preset } from './preset';
 
 export interface MoFile {
   Exp: Record<string, number>;
@@ -46,5 +46,5 @@ export function moToPreset(mo: MoFile, index: number): Preset {
     modules.push({ on: m.SWITCH === 1, type: m.TYPE, values });
   }
   const exp = Object.fromEntries(EXP_ORDER.map((k) => [k, mo.Exp?.[k] ?? 0])) as unknown as ExpSettings;
-  return { index, name: (mo.fileInfo.preset_name ?? '').slice(0, 16), modules, exp };
+  return { index, name: (mo.fileInfo.preset_name ?? '').slice(0, NAME_LENGTH), modules, exp };
 }

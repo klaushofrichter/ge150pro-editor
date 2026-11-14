@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
-  atSlot, canonical, moSet, parseManifest, placeByManifest, changedSlots, copyAs, copyName, emptyPreset, layoutToMoFiles, originsFrom, placeFromTray, slotOfFile, fileToLayout, isComplete, layoutToFile, placeByName, samePreset, swapBanks, swapSlots,
+  atSlot, backupFileName, canonical, moSet, parseManifest, placeByManifest, changedSlots, copyAs, copyName, emptyPreset, layoutToMoFiles, originsFrom, placeFromTray, slotOfFile, fileToLayout, isComplete, layoutToFile, placeByName, samePreset, swapBanks, swapSlots,
   type Layout,
 } from './arrange';
 import { presetToMo } from './protocol/mo';
@@ -185,6 +185,10 @@ describe('preset sets with a manifest', () => {
 });
 
 describe('backup files', () => {
+  it('are named with the second, and with characters file systems refuse replaced', () => {
+    expect(backupFileName('My: set/1\n', '2026-11-14T10:15:42.123Z')).toBe('GE150PRO My_ set_1_ 2026-11-14-10-15-42.json');
+  });
+
   it('round-trip a layout, including unfilled slots', () => {
     const l = full();
     l[3] = null;
