@@ -6,6 +6,7 @@ import ModulePanel from './components/ModulePanel.svelte';
 import SystemPanel from './components/SystemPanel.svelte';
 import ExpPanel from './components/ExpPanel.svelte';
 import ArrangeDialog from './components/ArrangeDialog.svelte';
+import WelcomeDialog, { welcomeConfirmed } from './components/WelcomeDialog.svelte';
 import Toggle from './components/Toggle.svelte';
 import { catalog } from './lib/catalog';
 import { GE150Pro } from './lib/device';
@@ -28,6 +29,7 @@ function $$render() {
   
   
   
+  
 
   const supported = GE150Pro.supported();
   const folderSupported = typeof window !== 'undefined' && 'showDirectoryPicker' in window;
@@ -35,6 +37,8 @@ function $$render() {
   let showSystem = $state(false);
   let showExp = $state(false);
   let showArrange = $state(false);
+  /** The first-visit panel: what this is, the factory presets, the risk. */
+  let showWelcome = $state(!welcomeConfirmed());
   let notice = $state('');
   const label = (i: number) => presetLabel(i).padStart(3, '0');
 
@@ -147,6 +151,9 @@ async () => {
   if(showExp){
      { const $$_lenaPpxE1C = __sveltets_2_ensureComponent(ExpPanel); new $$_lenaPpxE1C({ target: __sveltets_2_any(), props: {  "onclose":() => (showExp = false),}});}
   }
+  if(showWelcome){
+     { const $$_golaiDemocleW1C = __sveltets_2_ensureComponent(WelcomeDialog); new $$_golaiDemocleW1C({ target: __sveltets_2_any(), props: {  "onconfirm":() => (showWelcome = false),}});}
+  }
   if(showArrange){
      { const $$_golaiDegnarrA1C = __sveltets_2_ensureComponent(ArrangeDialog); new $$_golaiDegnarrA1C({ target: __sveltets_2_any(), props: {  "onclose":() => (showArrange = false),}});}
   }
@@ -156,6 +163,7 @@ async () => {
        { svelteHTML.createElement("div", { "class":`row`,});
          { svelteHTML.createElement("span", {}); editor.device?.name ?? 'not connected'; }
          { svelteHTML.createElement("span", { "class":`muted`,}); import.meta.env.VITE_APP_VERSION ?? 'development build';   { svelteHTML.createElement("a", { "href":`https://github.com/klaushofrichter/ge150pro-editor`,});  } }
+         { svelteHTML.createElement("button", { "onclick":() => (showWelcome = true),});    }
         if(editor.device){ { svelteHTML.createElement("button", { "onclick":() => editor.disconnect(),});  }}
          { svelteHTML.createElement("button", {   "disabled":!editor.dirty,"onclick":() => editor.revert(),});   }
          { svelteHTML.createElement("button", {   "disabled":!editor.live,"onclick":exportMo,});  }
