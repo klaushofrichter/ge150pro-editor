@@ -68,9 +68,9 @@ read-only.
 
 ## Good to know
 
-- On the first visit a panel explains what the editor is, how to get the factory presets in, and that you use it at
-  your own risk; it stays away once confirmed (remembered in the browser) and can be read again from the tools panel
-  (**About and factory presets**).
+- On the first visit a panel explains what the editor is, how to get the factory presets in, and the
+  [terms of use](TERMS.md): you use it at your own risk. It stays away once the terms are accepted (remembered in the
+  browser, until the terms change) and the ⓘ button in the header shows it again.
 
   <img src="docs/screenshots/welcome.png" alt="The first-visit panel" width="600">
 
@@ -99,6 +99,6 @@ from `main` to `production`. `production` is protected (the `test`, `e2e` and `c
 push to it publishes the app on GitHub Pages with a calendar version (`YYYY.MM.DD.N`, shown in the tools panel and as
 a GitHub release).
 
-## License
+## License and terms
 
-[MIT](LICENSE)
+The source code is under the [MIT license](LICENSE). Using the app is subject to the [terms of use](TERMS.md).
