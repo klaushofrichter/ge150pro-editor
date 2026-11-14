@@ -45,15 +45,26 @@ only to describe what the pedal does.
 - **Backups** are kept in the browser. Export one as a single file, or as a folder of `.mo` files named `01A Name.mo`
   … `50D Name.mo` with a `manifest.json` that describes the set (name, kind, dates, where it came from, a checksum per
   file). Importing a folder places it by its manifest and reports any file that has changed since.
-- **The original:** read the factory presets from Mooer's firmware file (`.mr`, firmware V2.1.2 or V2.1.4), and they
-  become a locked backup that cannot be changed or deleted. Presets are then marked **M** (modified: a factory name
-  with another sound) or **N** (new: a name the factory set does not have, copies and renamed presets included).
+- **The original:** the factory presets become a locked backup that cannot be changed or deleted. Presets are then
+  marked **M** (modified: a factory name with another sound) or **N** (new: a name the factory set does not have,
+  copies and renamed presets included).
 
-The firmware file comes with Mooer's editor or from Mooer's download page; this repository contains no firmware and
-nothing taken from it. To keep the factory presets as files, run
+### The factory presets
+
+They come with Mooer's own editor download; this repository contains no firmware and nothing taken from it.
+
+1. On [Mooer's download page](https://www.mooeraudio.com/Downloads_xq/6.html), download the GE150 Pro package **for
+   Mac** (a `.zip`). It works on any computer: nothing gets installed, the editor only reads the file.
+2. In the editor, open **Arrange and back up presets** (the grid icon next to PRESET) and, under **Backups**, choose
+   **Read the factory presets from Mooer's download**, then the `.zip`.
+3. **🔒 Factory presets** appears at the top of the backups; **Show** puts them in the grid.
+
+The editor unpacks the `.zip` and its disk image in the browser, finds the factory table in the firmware inside and
+accepts it only if it matches the known factory table byte for byte. The `.dmg` on its own, or the firmware file
+(`GE150PRO_V2.1.x.mr`) of an installed Mooer editor, work too. To keep the factory presets as files, run
 
 ```sh
-node scripts/extract-factory.mjs GE150PRO_V2.1.2.mr factory-presets
+node scripts/extract-factory.mjs ge150_pro_v2.1.4_mac.zip factory-presets
 ```
 
 which writes the 200 presets as `.mo` files with a manifest (kind `original`, immutable) into a new folder and makes it
@@ -68,8 +79,9 @@ read-only.
 
 ## Good to know
 
-- On the first visit a panel explains what the editor is, how to get the factory presets in, and the
-  [terms of use](TERMS.md): you use it at your own risk. It stays away once the terms are accepted (remembered in the
+- On the first visit a panel explains what the editor is, how to get the factory presets in, and links the
+  [terms of use](https://klaushofrichter.github.io/ge150pro-editor/terms.html) ([TERMS.md](TERMS.md)): you use it at
+  your own risk. It stays away once the terms are accepted (remembered in the
   browser, until the terms change) and the ⓘ button in the header shows it again.
 
   <img src="docs/screenshots/welcome.png" alt="The first-visit panel" width="600">

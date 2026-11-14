@@ -27,16 +27,13 @@ test('first visit: a panel explains the editor and the terms, must be accepted, 
   await expect(panel.getByRole('link', { name: "Mooer's download page" })).toHaveAttribute('href', 'https://www.mooeraudio.com/Downloads_xq/6.html');
   await expect(panel.getByRole('link', { name: 'Mooer GE150 Pro' })).toHaveAttribute('href', 'https://www.mooeraudio.com/products/207.html');
   await expect(panel.getByRole('link', { name: /github\.com\/klaushofrichter\/ge150pro-editor/ })).toBeVisible();
-  // the terms of use, from TERMS.md
-  await panel.getByRole('button', { name: 'Read the terms of use' }).click();
-  const terms = panel.getByRole('region', { name: 'Terms of use' });
-  await expect(terms).toContainText('No liability');
-  await expect(terms).toContainText('"as is"');
+  await expect(panel).toContainText("Read the factory presets from Mooer's download");
+  await expect(panel.getByRole('link', { name: 'terms of use' })).toHaveAttribute('href', './terms.html');
   // only accepting closes it
   await page.keyboard.press('Escape');
   await page.mouse.click(5, 5);
   await expect(panel).toBeVisible();
-  await panel.getByRole('button', { name: 'I agree to the terms and accept the risk' }).click();
+  await panel.getByRole('button', { name: 'I agree to the terms of use and accept the risk' }).click();
   await expect(panel).toBeHidden();
   expect(await page.evaluate((k) => localStorage.getItem(k), ACCEPTED_KEY)).toBe(TERMS_VERSION);
   await page.reload();
@@ -56,7 +53,28 @@ test('first visit: a panel explains the editor and the terms, must be accepted, 
 test('first visit after the terms changed: the panel shows again', async ({ page }) => {
   await page.addInitScript((k) => localStorage.setItem(k, '2000-01-01'), ACCEPTED_KEY);
   await page.goto('./');
-  await expect(page.getByRole('button', { name: 'I agree to the terms and accept the risk' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'I agree to the terms of use and accept the risk' })).toBeVisible();
+});
+
+test('the terms of use have a page of their own, from TERMS.md', async ({ page }) => {
+  const errors = watchErrors(page);
+  await page.goto('./terms.html');
+  await expect(page.getByRole('heading', { name: 'Terms of use', level: 1 })).toBeVisible();
+  await expect(page.locator('main')).toContainText('No liability');
+  await expect(page.locator('main')).toContainText('"as is"');
+  expect(await page.evaluate(() => document.documentElement.dataset.termsVersion)).toBe(TERMS_VERSION);
+  await page.getByRole('link', { name: '← GE150 Pro Editor' }).first().click();
+  await expect(page).toHaveURL(/\/$/);
+  expect(errors).toEqual([]);
+});
+
+test("the factory presets come from Mooer's download: the Arrange dialog takes .zip, .dmg and .mr", async ({ page }) => {
+  await page.goto('./?demo');
+  await page.getByRole('button', { name: 'Arrange and back up presets' }).click();
+  const input = page.locator('input[type=file][accept=".zip,.dmg,.mr"]');
+  await expect(input).toHaveCount(1);
+  await input.setInputFiles({ name: 'something.zip', mimeType: 'application/zip', buffer: Buffer.from('PK\u0003\u0004 not really a zip') });
+  await expect(page.locator('.message')).toContainText('the factory presets were not found in this file');
 });
 
 test('without a pedal, the start page offers the demo', async ({ page }) => {

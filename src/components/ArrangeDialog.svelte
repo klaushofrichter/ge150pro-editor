@@ -3,9 +3,10 @@
   import { onMount } from 'svelte';
   import { editor } from '../lib/store.svelte';
   import {
-    atSlot, BANK_COUNT, BANK_SIZE, changedSlots, copyAs, copyName, emptyPreset, factoryFromFirmware, presetName, KNOWN_FIRMWARE, MANIFEST_FILE, moSet, parseManifest, placeByManifest, fileToLayout, isComplete, layoutToFile, placeByName,
+    atSlot, BANK_COUNT, BANK_SIZE, changedSlots, copyAs, copyName, emptyPreset, presetName, MANIFEST_FILE, moSet, parseManifest, placeByManifest, fileToLayout, isComplete, layoutToFile, placeByName,
     swapBanks, swapSlots, type Layout,
   } from '../lib/arrange';
+  import { factoryFromFile } from '../lib/firmware';
   import { deleteBackup, listBackups, ORIGINAL_ID, saveBackup, type Backup } from '../lib/backups';
   import { moToPreset, type MoFile } from '../lib/protocol/mo';
   import { presetLabel, type Preset } from '../lib/protocol/preset';
@@ -238,20 +239,27 @@
     }
   }
 
-  /** The factory set from a firmware image becomes the locked original. */
+  /** The factory set, from Mooer's download (.zip), its disk image (.dmg) or the firmware (.mr), becomes the locked original. */
   async function importFirmware(e: Event & { currentTarget: HTMLInputElement }) {
     const file = e.currentTarget.files?.[0];
     e.currentTarget.value = '';
     if (!file) return;
-    const got = await factoryFromFirmware(new Uint8Array(await file.arrayBuffer()));
+    message = `Reading ${file.name}…`;
+    let got;
+    try {
+      got = await factoryFromFile(file.name, new Uint8Array(await file.arrayBuffer()));
+    } catch (err) {
+      got = null;
+      console.warn(err);
+    }
     if (!got) {
-      message = `${file.name}: not a firmware image this editor knows (${KNOWN_FIRMWARE.map((k) => k.version).join(', ')}).`;
+      message = `${file.name}: the factory presets were not found in this file. Use Mooer's GE150 Pro package for Mac (.zip), its .dmg, or the firmware file (.mr).`;
       return;
     }
     await saveBackup({ id: ORIGINAL_ID, name: `Factory presets (firmware ${got.version})`, source: 'factory', locked: true, layout: got.layout });
     await refresh();
     await editor.loadOriginal();
-    message = 'The factory presets are now the locked original.';
+    message = `The factory presets (firmware ${got.version}) are now the locked original at the top of the backups. Click Show to see them in the grid.`;
   }
 
   /**
@@ -432,7 +440,7 @@
         <label class="btn">Import a backup file<input type="file" accept=".json,application/json" hidden onchange={importFile} /></label>
         <button class="btn" disabled={busy || !('showDirectoryPicker' in window)} onclick={importMoFolder}>Place a folder of .mo files…</button>
         {#if !original}
-          <label class="btn">Read the factory presets from a firmware file (.mr)<input type="file" accept=".mr" hidden onchange={importFirmware} /></label>
+          <label class="btn">Read the factory presets from Mooer's download (.zip, .dmg or .mr)<input type="file" accept=".zip,.dmg,.mr" hidden onchange={importFirmware} /></label>
         {/if}
       </div>
       <ul>

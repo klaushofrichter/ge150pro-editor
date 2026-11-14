@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
-  atSlot, canonical, moSet, parseManifest, placeByManifest, changedSlots, copyAs, copyName, emptyPreset, factoryFromFirmware, layoutToMoFiles, originOf, slotOfFile, fileToLayout, isComplete, layoutToFile, placeByName, samePreset, swapBanks, swapSlots,
+  atSlot, canonical, moSet, parseManifest, placeByManifest, changedSlots, copyAs, copyName, emptyPreset, layoutToMoFiles, originOf, slotOfFile, fileToLayout, isComplete, layoutToFile, placeByName, samePreset, swapBanks, swapSlots,
   type Layout,
 } from './arrange';
 import { presetToMo } from './protocol/mo';
@@ -183,23 +183,3 @@ describe('backup files', () => {
   });
 });
 
-describe('the factory set in a firmware image', async () => {
-  it('refuses any file that is not a known firmware image', async () => {
-    expect(await factoryFromFirmware(new Uint8Array(1_200_000).fill(7))).toBeNull();
-  });
-
-  // The images are not in the repository: these run where a local copy exists (work/firmware/).
-  const fs = (await import(/* @vite-ignore */ `node:${'fs'}`)) as { existsSync(p: URL): boolean; readFileSync(p: URL): Uint8Array };
-  for (const version of ['V2.1.2', 'V2.1.4']) {
-    const local = new URL(`../../work/firmware/GE150PRO_${version}.mr`, import.meta.url);
-    it.runIf(fs.existsSync(local))(`reads the ${version} factory table`, async () => {
-      const got = (await factoryFromFirmware(new Uint8Array(fs.readFileSync(local))))!;
-      expect(got.version).toBe(version);
-      const l = got.layout;
-      expect(l.slice(0, 5).map((p) => p!.name)).toEqual(['65 Deluxe', '65 Twin', '59 Bassguy', 'Sonic Drive', 'US Blues Clean']);
-      expect(l[199]!.name).toBe('Dual Lead');
-      expect(l.every((p) => p!.modules.every((m) => m.values.length === 10))).toBe(true);
-      expect(l[0]!.modules[8].values[4]).toBe(65);
-    });
-  }
-});
