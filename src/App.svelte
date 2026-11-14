@@ -5,6 +5,7 @@
   import SystemPanel from './components/SystemPanel.svelte';
   import ExpPanel from './components/ExpPanel.svelte';
   import ArrangeDialog from './components/ArrangeDialog.svelte';
+  import WelcomeDialog, { welcomeConfirmed } from './components/WelcomeDialog.svelte';
   import Toggle from './components/Toggle.svelte';
   import { catalog } from './lib/catalog';
   import { GE150Pro } from './lib/device';
@@ -19,6 +20,8 @@
   let showSystem = $state(false);
   let showExp = $state(false);
   let showArrange = $state(false);
+  /** The first-visit panel: what this is, the factory presets, the risk. */
+  let showWelcome = $state(!welcomeConfirmed());
   let notice = $state('');
   const label = (i: number) => presetLabel(i).padStart(3, '0');
 
@@ -135,6 +138,9 @@
   {#if showExp}
     <ExpPanel onclose={() => (showExp = false)} />
   {/if}
+  {#if showWelcome}
+    <WelcomeDialog onconfirm={() => (showWelcome = false)} />
+  {/if}
   {#if showArrange}
     <ArrangeDialog onclose={() => (showArrange = false)} />
   {/if}
@@ -144,6 +150,7 @@
       <div class="row">
         <span>Device: {editor.device?.name ?? 'not connected'}</span>
         <span class="muted">Editor {import.meta.env.VITE_APP_VERSION ?? 'development build'} · <a href="https://github.com/klaushofrichter/ge150pro-editor">source</a></span>
+        <button onclick={() => (showWelcome = true)}>About and factory presets</button>
         {#if editor.device}<button onclick={() => editor.disconnect()}>Disconnect</button>{/if}
         <button disabled={!editor.dirty} onclick={() => editor.revert()}>Revert unsaved changes</button>
         <button disabled={!editor.live} onclick={exportMo}>Export .mo</button>

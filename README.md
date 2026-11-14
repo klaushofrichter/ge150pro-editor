@@ -68,6 +68,12 @@ read-only.
 
 ## Good to know
 
+- On the first visit a panel explains what the editor is, how to get the factory presets in, and that you use it at
+  your own risk; it stays away once confirmed (remembered in the browser) and can be read again from the tools panel
+  (**About and factory presets**).
+
+  <img src="docs/screenshots/welcome.png" alt="The first-visit panel" width="600">
+
 - The first **Connect device** asks Chrome for permission to use the pedal; the page connects by itself afterwards.
 - Changes to effects are live on the pedal but not stored until you save the preset (the disk icon). Arrangements are
   written only with **Write … to the pedal**, which always asks first.
