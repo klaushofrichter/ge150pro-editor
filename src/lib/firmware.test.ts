@@ -18,6 +18,24 @@ describe('finding the table in pieces', () => {
     }
   });
 
+  it('finds a table that runs through an empty (zero-filled) region of a disk image', async () => {
+    const withZeros = table.slice();
+    withZeros.fill(0, 400, 900); // the table itself has a stretch of zeros
+    const sha = await sha256Hex(withZeros);
+    const scanner = new TableScanner(anchor, withZeros.length, sha);
+    expect(await scanner.push(noise(300, 7))).toBeNull();
+    expect(await scanner.push(withZeros.subarray(0, 400))).toBeNull(); // a candidate is open
+    expect(await scanner.pushZeros(500)).toBeNull(); // the zeros belong to it
+    expect(await scanner.push(new Uint8Array([...withZeros.subarray(900), ...noise(50, 3)]))).toEqual(withZeros);
+  });
+
+  it('skips empty regions when no table is open', async () => {
+    const sha = await sha256Hex(table);
+    const scanner = new TableScanner(anchor, table.length, sha);
+    expect(await scanner.pushZeros(10_000_000)).toBeNull(); // nothing allocated for 10 MB of zeros
+    expect(await scanner.push(new Uint8Array([...noise(20, 5), ...table]))).toEqual(table);
+  });
+
   it('rejects a table with the right start but other content', async () => {
     const other = table.slice();
     other[500] ^= 1;
