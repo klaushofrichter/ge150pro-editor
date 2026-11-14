@@ -3,10 +3,10 @@
   import { onMount } from 'svelte';
   import { editor } from '../lib/store.svelte';
   import {
-    atSlot, BANK_COUNT, BANK_SIZE, changedSlots, copyAs, copyName, emptyPreset, fileToLayout, isComplete, layoutToFile, MANIFEST_FILE,
+    atSlot, backupFileName, BANK_COUNT, BANK_SIZE, changedSlots, copyAs, copyName, emptyPreset, fileToLayout, isComplete, layoutToFile, MANIFEST_FILE,
     moSet, parseManifest, placeByManifest, placeByName, placeFromTray, presetName, swapBanks, swapSlots, type Layout, type TrayItem,
   } from '../lib/arrange';
-  import { askPresetName, dirFiles, downloadText, folderSupported, pickDirectory } from '../lib/files';
+  import { askPresetName, dirFiles, downloadText, errorText, folderSupported, pickDirectory } from '../lib/files';
   import { factoryFromFile } from '../lib/firmware';
   import { deleteBackup, listBackups, ORIGINAL_ID, saveBackup, type Backup } from '../lib/backups';
   import { moToPreset, type MoFile } from '../lib/protocol/mo';
@@ -34,7 +34,7 @@
   const changed = $derived(changedSlots(pedal, layout));
   const changedSet = $derived(new Set(changed));
   const original = $derived(backups.find((b) => b.id === ORIGINAL_ID));
-  const canWrite = $derived((!!editor.device || editor.demo) && editor.status === 'ready' && changed.length > 0 && !editor.busy);
+  const canWrite = $derived(editor.online && editor.status === 'ready' && changed.length > 0 && !editor.busy);
 
   onMount(refresh);
 
@@ -42,7 +42,7 @@
     try {
       backups = await listBackups();
     } catch (e) {
-      message = `Backups are not available in this browser: ${e instanceof Error ? e.message : e}`;
+      message = `Backups are not available in this browser: ${errorText(e)}`;
     }
   }
 
@@ -85,13 +85,9 @@
   async function replaceWithMo(file: File, slot: number) {
     try {
       const p = moToPreset(JSON.parse(await file.text()) as MoFile, slot + 1);
-      const next = [...layout];
-      next[slot] = p;
-      change(next);
-      selected = slot;
-      message = `${presetLabel(slot + 1)} is now "${presetName(p)}" from ${file.name} (not written yet).`;
+      setSlot(slot, p, `is now "${presetName(p)}" from ${file.name}`);
     } catch (err) {
-      message = `${file.name}: ${err instanceof Error ? err.message : err}`;
+      message = `${file.name}: ${errorText(err)}`;
     }
   }
 
@@ -179,8 +175,7 @@
   }
 
   function download(b: { name: string; created: string; layout: Layout }) {
-    const stamp = b.created.slice(0, 16).replace(/[:T]/g, '-');
-    downloadText(`GE150PRO ${b.name} ${stamp}.json`, JSON.stringify(layoutToFile(b.layout, b.name, b.created), null, 1));
+    downloadText(backupFileName(b.name, b.created), JSON.stringify(layoutToFile(b.layout, b.name, b.created), null, 1));
   }
 
   /**
@@ -202,7 +197,7 @@
     try {
       dir = await pickDirectory('ge150-mo-export', 'readwrite');
     } catch (err) {
-      message = `The folder could not be opened: ${err instanceof Error ? err.message : err}`;
+      message = errorText(err);
       return;
     }
     if (!dir) return;
@@ -218,6 +213,13 @@
       await w.close();
     }
     message = `Wrote ${files.length} .mo files to ${dir.name}.`;
+  }
+
+  /** The factory set becomes the locked original (shown at the top of the backups, used for the M and N marks). */
+  async function adoptOriginal(name: string, l: Layout, created?: string) {
+    await saveBackup({ id: ORIGINAL_ID, name, created, source: 'factory', locked: true, layout: l });
+    await refresh();
+    await editor.loadOriginal();
   }
 
   async function remove(b: Backup) {
@@ -236,7 +238,7 @@
       await refresh();
       message = `Imported "${file.name}".`;
     } catch (err) {
-      message = `${file.name}: ${err instanceof Error ? err.message : err}`;
+      message = `${file.name}: ${errorText(err)}`;
     }
   }
 
@@ -257,9 +259,7 @@
       message = `${file.name}: the factory presets were not found in this file. Use Mooer's GE150 Pro package for Mac (.zip), its .dmg, or the firmware file (.mr).`;
       return;
     }
-    await saveBackup({ id: ORIGINAL_ID, name: `Factory presets (firmware ${got.version})`, source: 'factory', locked: true, layout: got.layout });
-    await refresh();
-    await editor.loadOriginal();
+    await adoptOriginal(`Factory presets (firmware ${got.version})`, got.layout);
     message = `The factory presets (firmware ${got.version}) are now the locked original at the top of the backups. Click Show to see them in the grid.`;
   }
 
@@ -272,7 +272,7 @@
     try {
       dir = await pickDirectory('ge150-mo-backup');
     } catch (err) {
-      message = `The folder could not be opened: ${err instanceof Error ? err.message : err}`;
+      message = errorText(err);
       return;
     }
     if (!dir) return;
@@ -292,13 +292,11 @@
         ].filter(Boolean);
         message = problems.length ? `Placed by the manifest, but ${problems.join(' and ')}.` : `All ${m.presets.length} presets placed by the manifest and checked against it.`;
         if (m.kind === 'original' && m.immutable && !original && !problems.length && isComplete(l)) {
-          await saveBackup({ id: ORIGINAL_ID, name: m.name, created: m.created, source: 'factory', locked: true, layout: l });
-          await refresh();
-          await editor.loadOriginal();
+          await adoptOriginal(m.name, l, m.created);
           message += ' It is now the locked original.';
         }
       } catch (err) {
-        message = `${MANIFEST_FILE}: ${err instanceof Error ? err.message : err}`;
+        message = `${MANIFEST_FILE}: ${errorText(err)}`;
       }
       return;
     }

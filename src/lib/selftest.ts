@@ -6,6 +6,7 @@
 // selection is not tested because it discards unsaved edits.
 import type { GE150Pro } from './device';
 import { catalog, rawRange } from './catalog';
+import { errorText } from './files';
 import { requestCurrent, Cmd } from './protocol/commands';
 import { decodeModule, encodeModule, type ExpSettings, type ModuleState } from './protocol/preset';
 import { decodeExpReport, ExpCmd } from './protocol/exp';
@@ -26,7 +27,7 @@ async function readCurrent(dev: GE150Pro) {
   const r = await dev.exchange(requestCurrent(), [...MODULE_REPORTS, ExpCmd.FUNCTION, ExpCmd.VOLUME]);
   const modules = MODULE_REPORTS.map((c) => decodeModule(r.get(c)!));
   const exp = { ...decodeExpReport(ExpCmd.FUNCTION, r.get(ExpCmd.FUNCTION)!), ...decodeExpReport(ExpCmd.VOLUME, r.get(ExpCmd.VOLUME)!) } as ExpSettings;
-  return { modules, exp, raw: r };
+  return { modules, exp };
 }
 
 /** Run one set → verify → restore → verify cycle. */
@@ -51,7 +52,7 @@ async function cycle<T>(
       const back = await read();
       if (!eq(back, original)) restoreError = `restore failed: expected ${show(original)}, pedal reports ${show(back)}`;
     } catch (e) {
-      restoreError = `restore failed: ${e instanceof Error ? e.message : e}`;
+      restoreError = `restore failed: ${errorText(e)}`;
     }
     if (restoreError) throw new Error(`${name}: ${restoreError}`);
   }
@@ -67,7 +68,7 @@ export async function runSelfTest(dev: GE150Pro, onResult: (r: CheckResult) => v
     try {
       add(await fn());
     } catch (e) {
-      add({ name, status: 'fail', detail: e instanceof Error ? e.message : String(e) });
+      add({ name, status: 'fail', detail: errorText(e) });
     }
   };
 

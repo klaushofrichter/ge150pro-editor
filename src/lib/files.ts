@@ -7,13 +7,19 @@ type DirectoryPicker = { showDirectoryPicker(o?: { id?: string; mode?: 'read' | 
 /** Whether this browser can open folders. */
 export const folderSupported = () => typeof window !== 'undefined' && 'showDirectoryPicker' in window;
 
-/** Ask for a folder; null when the user cancels. Other failures (a folder the browser refuses) are thrown. */
+/** An error as text for a message. */
+export const errorText = (e: unknown) => (e instanceof Error ? e.message : String(e));
+
+/**
+ * Ask for a folder; null when the user cancels. Other failures (a folder the browser refuses) are thrown with a
+ * message ready to show.
+ */
 export async function pickDirectory(id: string, mode: 'read' | 'readwrite' = 'read'): Promise<FileSystemDirectoryHandle | null> {
   try {
     return await (window as unknown as DirectoryPicker).showDirectoryPicker({ id, mode });
   } catch (e) {
     if (e instanceof DOMException && e.name === 'AbortError') return null;
-    throw e;
+    throw new Error(`The folder could not be opened: ${errorText(e)}`);
   }
 }
 

@@ -5,7 +5,7 @@ import { model } from './catalog';
 import { sha256Hex } from './firmware';
 import { EXP_PARAMS } from './protocol/exp';
 import { moToPreset, presetToMo, type MoFile } from './protocol/mo';
-import { encodePreset, paddedLabel, PRESET_COUNT, presetLabel, type Preset } from './protocol/preset';
+import { encodePreset, NAME_LENGTH, paddedLabel, PRESET_COUNT, presetLabel, type Preset } from './protocol/preset';
 
 export type Layout = (Preset | null)[];
 
@@ -77,7 +77,7 @@ export function sameSound(x: Preset, y: Preset): boolean {
  * "Empty" slots (8B, 8D, 9D, 10B on the test unit, 2026-11-14), byte for byte.
  */
 const EMPTY: Omit<Preset, 'index'> = {
-  name: 'Empty'.padEnd(16, ' '),
+  name: 'Empty'.padEnd(NAME_LENGTH, ' '),
   modules: [
     [50, 50, 50, 50, 0, 0, 0, 0, 0, 0],
     [50, 50, 50, 0, 0, 0, 0, 0, 0, 0],
@@ -99,7 +99,7 @@ export const isEmptyPreset = (p: Preset) => presetName(p) === 'Empty' && p.modul
 
 /** A copy of a preset under another name, for another slot. */
 export function copyAs(p: Preset, name: string, index: number): Preset {
-  return { ...atSlot(p, index), name: name.slice(0, 16) };
+  return { ...atSlot(p, index), name: name.slice(0, NAME_LENGTH) };
 }
 
 /** "Name 2", "Name 3", … within 16 characters, not yet used in the layout. */
@@ -129,13 +129,18 @@ export function originsFrom(original: Layout | null): (p: Preset | null | undefi
     if (list) list.push(o);
     else byName.set(name, [o]);
   }
-  return (p) => {
-    if (!p) return null;
+  const memo = new WeakMap<Preset, Origin | null>(); // presets are values (see samePreset)
+  const origin = (p: Preset): Origin | null => {
     if (isEmptyPreset(p)) return 'empty';
     if (!original) return null;
     const same = byName.get(presetName(p));
     if (!same) return 'new';
     return same.some((o) => sameSound(o, p)) ? 'original' : 'modified';
+  };
+  return (p) => {
+    if (!p) return null;
+    if (!memo.has(p)) memo.set(p, origin(p));
+    return memo.get(p)!;
   };
 }
 
@@ -313,6 +318,11 @@ export interface BackupFile {
   name?: string;
   presets: ({ index: number; mo: MoFile } | null)[];
   [extra: string]: unknown;
+}
+
+/** "GE150PRO <name> 2026-11-14-10-15.json": the file name of a backup file. */
+export function backupFileName(name: string, created: string): string {
+  return `GE150PRO ${name.replace(/[\\/:*?"<>|]/g, '_')} ${created.slice(0, 16).replace(/[:T]/g, '-')}.json`;
 }
 
 export function layoutToFile(layout: Layout, name: string, created = new Date().toISOString()): BackupFile {
