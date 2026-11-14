@@ -93,3 +93,6 @@ export function presetLabel(index: number): string {
   const i = index - 1;
   return `${Math.floor(i / 4) + 1}${'ABCD'[i % 4]}`;
 }
+
+/** The same with a two-digit bank, e.g. 5 -> "02A": sorts in slot order (lists, file names). */
+export const paddedLabel = (index: number) => presetLabel(index).padStart(3, '0');

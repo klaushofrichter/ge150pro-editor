@@ -70,6 +70,9 @@ export const SysCmd = {
   SYSTEM: 0x32,
   GLOBAL_EQ: 0x11,
   SPILL_OVER: 0x12,
+  // device -> host (changed on the pedal)
+  GLOBAL_EQ_CHANGED: 0x51,
+  SPILL_OVER_CHANGED: 0x52,
   // host -> device
   SET_INPUT_LEVEL: 0xa4,
   SET_BRIGHTNESS: 0xa5,

@@ -6,7 +6,8 @@ import type { Message } from './protocol/frame';
 import type { GlobalEq, SystemSettings } from './protocol/system';
 import type { Rhythm } from './protocol/rhythm';
 import { runSelfTest, type CheckResult } from './selftest';
-import { atSlot, changedSlots, isEmptyPreset, originOf, samePreset, type Layout, type Origin } from './arrange';
+import { atSlot, changedSlots, layoutToFile, originsFrom, samePreset, type Layout, type Origin } from './arrange';
+import { dirFiles, pickDirectory } from './files';
 import { listBackups, ORIGINAL_ID, saveBackup } from './backups';
 
 export interface WriteProgress {
@@ -54,12 +55,10 @@ class EditorState {
 
   /** A write of an arrangement to the pedal: its progress, or null when none ran. */
   writing: WriteProgress | null = $state(null);
-  /** The locked original backup (the factory set), if this browser has one. */
+  /** The locked original backup (the factory set), if this browser has one; set it with setOriginal(). */
   original: Layout | null = $state.raw(null);
+  private origins = $state.raw(originsFrom(null));
   private stopWriting = false;
-
-  private pending = new Map<number, ModuleState>();
-  private timers = new Map<number, ReturnType<typeof setTimeout>>();
 
   get loaded() {
     return this.presets.filter(Boolean).length;
@@ -96,7 +95,7 @@ class EditorState {
     const presets = demoPresets();
     // the demo's own "original": the generated set; two presets differ from it, to show the M and N marks
     this.demo = true;
-    this.original = demoPresets();
+    this.setOriginal(structuredClone(presets));
     presets[5].modules[2] = { ...presets[5].modules[2], values: presets[5].modules[2].values.map((v, k) => (k === 0 ? Math.max(0, v - 7) : v)) };
     presets[9] = { ...presets[9], name: 'My Tone' };
     presets.forEach((p, i) => (this.presets[i] = p));
@@ -185,19 +184,8 @@ class EditorState {
     if (!this.live || (!this.device && !this.demo)) return;
     this.live.modules[slot] = m;
     this.dirty = true;
-    this.pending.set(slot, $state.snapshot(m) as ModuleState);
-    if (this.timers.has(slot)) return;
-    const flush = () => {
-      const next = this.pending.get(slot);
-      this.pending.delete(slot);
-      if (!next) {
-        this.timers.delete(slot);
-        return;
-      }
-      this.device?.setModule(slot, next);
-      this.timers.set(slot, setTimeout(flush, SEND_INTERVAL_MS));
-    };
-    flush();
+    const send = $state.snapshot(m) as ModuleState;
+    this.throttled(`module${slot}`, () => this.device?.setModule(slot, send));
   }
 
   /** Set/read-back/restore checks against the pedal; leaves the live state and dirty flag as found. */
@@ -307,15 +295,11 @@ class EditorState {
   /** Whole-device backup as JSON: every preset in .mo form plus system settings. */
   exportBackup(): { filename: string; json: string } | null {
     if (this.loaded === 0) return null;
-    const presets = $state.snapshot(this.presets) as (Preset | undefined)[];
     const data = {
-      format: 'ge150pro-web-backup',
-      version: 1,
-      created: new Date().toISOString(),
+      ...layoutToFile(this.pedalLayout(), 'Pedal'),
       system: $state.snapshot(this.system),
       globalEq: $state.snapshot(this.globalEq),
       spillOver: this.spillOver,
-      presets: presets.map((p, i) => (p ? { index: i + 1, mo: presetToMo(p) } : null)),
     };
     const stamp = data.created.slice(0, 19).replace(/[:T]/g, '-');
     return { filename: `GE150PRO-backup-${stamp}.json`, json: JSON.stringify(data, null, 1) };
@@ -328,14 +312,22 @@ class EditorState {
     } catch {
       // no IndexedDB (private window): no original
     }
-    if (!this.demo) this.original = original; // the demo brings its own
+    if (!this.demo) this.setOriginal(original); // the demo brings its own
   }
 
-  /** How a preset relates to the original set (null without an original). */
+  private setOriginal(original: Layout | null) {
+    this.original = original;
+    this.origins = originsFrom(original);
+  }
+
+  /** How a preset relates to the original set: empty, original, modified or new (null without an original). */
   originOf(p: Preset | null | undefined): Origin | null {
-    if (!p) return null;
-    if (isEmptyPreset(p)) return 'empty';
-    return this.original ? originOf(p, this.original) : null;
+    return this.origins(p);
+  }
+
+  /** A write to the pedal is running. */
+  get busy() {
+    return !!this.writing && ['backup', 'writing', 'verifying'].includes(this.writing.phase);
   }
 
   /** What the pedal holds now, as a layout. */
@@ -348,7 +340,7 @@ class EditorState {
    * a backup of the pedal as it is. Then read every preset back and compare. Stops between presets on cancelWrite().
    */
   async writeLayout(target: Layout) {
-    if (this.writing && ['backup', 'writing', 'verifying'].includes(this.writing.phase)) return;
+    if (this.busy) return;
     const pedal = this.pedalLayout();
     if (pedal.some((p) => !p)) throw new Error('the presets have not all loaded yet');
     const slots = changedSlots(pedal, target);
@@ -411,22 +403,18 @@ class EditorState {
     return this.select(((from - 1 + delta + PRESET_COUNT) % PRESET_COUNT) + 1);
   }
 
-  static folderSupported() {
-    return typeof window !== 'undefined' && 'showDirectoryPicker' in window;
-  }
-
   async chooseFolder() {
-    this.folder = await (window as unknown as { showDirectoryPicker(o?: object): Promise<FileSystemDirectoryHandle> }).showDirectoryPicker({ id: 'ge150-presets' });
+    const dir = await pickDirectory('ge150-presets');
+    if (!dir) return;
+    this.folder = dir;
     await this.refreshFolder();
   }
 
   async refreshFolder() {
     if (!this.folder) return;
     const files: { name: string; handle: FileSystemFileHandle }[] = [];
-    for await (const entry of (this.folder as unknown as { values(): AsyncIterable<FileSystemHandle> }).values()) {
-      if (entry.kind === 'file' && entry.name.toLowerCase().endsWith('.mo')) {
-        files.push({ name: entry.name.replace(/\.mo$/i, ''), handle: entry as FileSystemFileHandle });
-      }
+    for await (const f of dirFiles(this.folder)) {
+      if (f.name.toLowerCase().endsWith('.mo')) files.push({ name: f.name.replace(/\.mo$/i, ''), handle: f });
     }
     this.localFiles = files.sort((a, b) => a.name.localeCompare(b.name));
   }

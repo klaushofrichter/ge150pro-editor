@@ -10,13 +10,14 @@
   import Toggle from './components/Toggle.svelte';
   import { catalog } from './lib/catalog';
   import { GE150Pro } from './lib/device';
-  import { PRESET_COUNT, presetLabel } from './lib/protocol/preset';
+  import { paddedLabel, PRESET_COUNT, presetLabel } from './lib/protocol/preset';
   import { RHYTHM_MODES, styleName } from './lib/protocol/rhythm';
   import { expLabel } from './lib/protocol/exp';
   import { editor } from './lib/store.svelte';
+  import { askPresetName, downloadText, folderSupported as canOpenFolders } from './lib/files';
 
   const supported = GE150Pro.supported();
-  const folderSupported = typeof window !== 'undefined' && 'showDirectoryPicker' in window;
+  const folderSupported = canOpenFolders();
   let showSettings = $state(false);
   let showSystem = $state(false);
   let showExp = $state(false);
@@ -32,7 +33,7 @@
   let notice = $state('');
   /** On a phone, a notice instead of the editor, until "Show it anyway". */
   let phone = $state(isPhone());
-  const label = (i: number) => presetLabel(i).padStart(3, '0');
+  const label = paddedLabel;
 
   onMount(() => {
     if (phone) return;
@@ -58,23 +59,19 @@
 
   async function store() {
     if (!editor.live) return;
-    const name = prompt(`Store to ${presetLabel(editor.live.index)} on the device. Preset name (max 16):`, editor.live.name);
-    if (name === null) return;
-    await editor.store(name);
+    const name = askPresetName(`Store to ${presetLabel(editor.live.index)} on the device. Preset name`, editor.live.name);
+    if (name) await editor.store(name);
   }
 
   async function rename() {
     if (!editor.live) return;
-    const name = prompt('Rename preset (max 16 characters):', editor.live.name);
-    if (name !== null && name !== editor.live.name) await editor.rename(name);
+    const name = askPresetName('Rename preset', editor.live.name);
+    if (name && name !== editor.live.name) await editor.rename(name);
   }
 
   function exportMo() {
     const out = editor.exportMo();
-    if (!out) return;
-    const url = URL.createObjectURL(new Blob([out.json], { type: 'application/json' }));
-    Object.assign(document.createElement('a'), { href: url, download: out.filename }).click();
-    URL.revokeObjectURL(url);
+    if (out) downloadText(out.filename, out.json);
   }
 
   async function importFile(e: Event & { currentTarget: HTMLInputElement }) {
@@ -616,21 +613,9 @@
       top: 48px;
     }
   }
-  .mark {
+  .presets .mark {
     float: right;
-    font-size: 0.7rem;
-    font-weight: 600;
-    padding: 0 5px;
-    border-radius: 3px;
     margin-right: 4px;
-  }
-  .mark.modified {
-    background: #b8860b;
-    color: #111;
-  }
-  .mark.new {
-    background: #3a7bd5;
-    color: #fff;
   }
   .unused {
     opacity: 0.5;

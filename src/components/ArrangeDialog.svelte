@@ -3,9 +3,10 @@
   import { onMount } from 'svelte';
   import { editor } from '../lib/store.svelte';
   import {
-    atSlot, BANK_COUNT, BANK_SIZE, changedSlots, copyAs, copyName, emptyPreset, presetName, MANIFEST_FILE, moSet, parseManifest, placeByManifest, fileToLayout, isComplete, layoutToFile, placeByName,
-    swapBanks, swapSlots, type Layout,
+    atSlot, BANK_COUNT, BANK_SIZE, changedSlots, copyAs, copyName, emptyPreset, fileToLayout, isComplete, layoutToFile, MANIFEST_FILE,
+    moSet, parseManifest, placeByManifest, placeByName, placeFromTray, presetName, swapBanks, swapSlots, type Layout, type TrayItem,
   } from '../lib/arrange';
+  import { askPresetName, dirFiles, downloadText, folderSupported, pickDirectory } from '../lib/files';
   import { factoryFromFile } from '../lib/firmware';
   import { deleteBackup, listBackups, ORIGINAL_ID, saveBackup, type Backup } from '../lib/backups';
   import { moToPreset, type MoFile } from '../lib/protocol/mo';
@@ -16,7 +17,7 @@
   let layout: Layout = $state(editor.pedalLayout());
   let history: Layout[] = $state([]);
   /** Presets waiting for a slot (from .mo files no slot took, or pushed out by a tray drop). */
-  let tray: { file: string; preset: Preset }[] = $state([]);
+  let tray: TrayItem[] = $state([]);
   let showing = $state('the pedal');
   let backups: Backup[] = $state([]);
   let message = $state('');
@@ -27,9 +28,11 @@
   /** Duplicating: the slot whose preset is copied into the next slot clicked. */
   let copyFrom: number | null = $state(null);
 
-  const changed = $derived(changedSlots(editor.pedalLayout(), layout));
+  /** The pedal as a layout, taken again only when its presets change (not on every edit here). */
+  const pedal = $derived(editor.pedalLayout());
+  const changed = $derived(changedSlots(pedal, layout));
   const changedSet = $derived(new Set(changed));
-  const busy = $derived(!!editor.writing && ['backup', 'writing', 'verifying'].includes(editor.writing.phase));
+  const busy = $derived(editor.busy);
   const original = $derived(backups.find((b) => b.id === ORIGINAL_ID));
   const canWrite = $derived((!!editor.device || editor.demo) && editor.status === 'ready' && changed.length > 0 && !busy);
 
@@ -55,7 +58,7 @@
     layout = prev;
   }
 
-  function show(next: Layout, what: string, unplaced: { file: string; preset: Preset }[] = []) {
+  function show(next: Layout, what: string, unplaced: TrayItem[] = []) {
     change(next);
     tray = unplaced;
     showing = what;
@@ -67,6 +70,11 @@
     const copy = e.altKey && what.startsWith('slot:');
     e.dataTransfer?.setData('text/plain', copy ? what.replace('slot:', 'copy:') : what);
     if (e.dataTransfer) e.dataTransfer.effectAllowed = copy ? 'copy' : 'move';
+  };
+  /** What a drop carries: "slot:3", "copy:3", "bank:7" or "tray:0". */
+  const dropped = (e: DragEvent) => {
+    const [kind, n] = (e.dataTransfer?.getData('text/plain') ?? '').split(':');
+    return { kind, n: Number(n) };
   };
   const over = (e: DragEvent, key: string) => {
     e.preventDefault();
@@ -81,7 +89,7 @@
       next[slot] = p;
       change(next);
       selected = slot;
-      message = `${presetLabel(slot + 1)} is now "${p.name.trim()}" from ${file.name} (not written yet).`;
+      message = `${presetLabel(slot + 1)} is now "${presetName(p)}" from ${file.name} (not written yet).`;
     } catch (err) {
       message = `${file.name}: ${err instanceof Error ? err.message : err}`;
     }
@@ -105,17 +113,17 @@
     copyFrom = null;
     const p = layout[from];
     if (!p || from === to) return;
-    const name = prompt(`Name of the copy of "${presetName(p)}" in ${presetLabel(to + 1)} (max 16):`, copyName(p, layout));
-    if (!name?.trim()) return;
-    setSlot(to, copyAs(p, name.trim(), to + 1), `is a copy of ${presetLabel(from + 1)}, named "${name.trim().slice(0, 16)}"`);
+    const name = askPresetName(`Name of the copy of "${presetName(p)}" in ${presetLabel(to + 1)}`, copyName(p, layout));
+    if (!name) return;
+    setSlot(to, copyAs(p, name, to + 1), `is a copy of ${presetLabel(from + 1)}, named "${name}"`);
   }
 
   function rename(slot: number) {
     const p = layout[slot];
     if (!p) return;
-    const name = prompt(`New name for ${presetLabel(slot + 1)} (max 16):`, presetName(p));
-    if (!name?.trim() || name.trim() === presetName(p)) return;
-    setSlot(slot, { ...atSlot(p, slot + 1), name: name.trim().slice(0, 16) }, `is renamed "${name.trim().slice(0, 16)}"`);
+    const name = askPresetName(`New name for ${presetLabel(slot + 1)}`, presetName(p));
+    if (!name || name === presetName(p)) return;
+    setSlot(slot, { ...atSlot(p, slot + 1), name }, `is renamed "${name}"`);
   }
 
   function clickSlot(slot: number) {
@@ -138,49 +146,41 @@
       else message = `${file.name} is not a .mo preset file.`;
       return;
     }
-    const [kind, v] = (e.dataTransfer?.getData('text/plain') ?? '').split(':');
-    const n = Number(v);
+    const { kind, n } = dropped(e);
     if (kind === 'slot' && n !== slot) change(swapSlots(layout, n, slot));
     else if (kind === 'copy') duplicate(n, slot);
-    else if (kind === 'tray') {
-      const item = tray[n];
-      if (!item) return;
-      const next = [...layout];
-      const out = next[slot];
-      next[slot] = atSlot(item.preset, slot + 1);
-      change(next);
-      tray = tray.filter((_, k) => k !== n).concat(out ? [{ file: `from ${presetLabel(slot + 1)}`, preset: out }] : []);
+    else if (kind === 'tray' && tray[n]) {
+      const placed = placeFromTray(layout, tray, n, slot);
+      change(placed.layout);
+      tray = placed.tray;
     }
   }
 
   function dropOnBank(e: DragEvent, bank: number) {
     e.preventDefault();
     dragOver = '';
-    const [kind, v] = (e.dataTransfer?.getData('text/plain') ?? '').split(':');
-    if (kind === 'bank' && Number(v) !== bank) change(swapBanks(layout, Number(v), bank));
+    const { kind, n } = dropped(e);
+    if (kind === 'bank' && n !== bank) change(swapBanks(layout, n, bank));
   }
 
   // ---- backups ---------------------------------------------------------------------------------------------------
   async function backUpPedal() {
-    await saveBackup({ name: 'Pedal', source: 'pedal', locked: false, layout: editor.pedalLayout() });
+    await saveBackup({ name: 'Pedal', source: 'pedal', locked: false, layout: pedal });
     await refresh();
     message = 'Saved a backup of the pedal.';
   }
 
   async function saveArrangement() {
     if (!isComplete(layout)) return;
-    const name = prompt('Name of this backup:', 'My arrangement');
+    const name = prompt('Name of this backup:', 'My arrangement')?.trim();
     if (!name) return;
     await saveBackup({ name, source: 'file', locked: false, layout: $state.snapshot(layout) as Layout });
     await refresh();
   }
 
   function download(b: { name: string; created: string; layout: Layout }) {
-    const json = JSON.stringify(layoutToFile(b.layout, b.name, b.created), null, 1);
-    const url = URL.createObjectURL(new Blob([json], { type: 'application/json' }));
     const stamp = b.created.slice(0, 16).replace(/[:T]/g, '-');
-    Object.assign(document.createElement('a'), { href: url, download: `GE150PRO ${b.name} ${stamp}.json` }).click();
-    URL.revokeObjectURL(url);
+    downloadText(`GE150PRO ${b.name} ${stamp}.json`, JSON.stringify(layoutToFile(b.layout, b.name, b.created), null, 1));
   }
 
   /**
@@ -198,15 +198,10 @@
         : `A backup of GE150 Pro presets (${b.source}), saved ${b.created}.`,
       source: original ? { type: 'firmware', from: b.name } : { type: b.source, saved: b.created },
     });
-    let dir: FileSystemDirectoryHandle;
-    try {
-      dir = await (window as unknown as { showDirectoryPicker(o?: object): Promise<FileSystemDirectoryHandle> }).showDirectoryPicker({ id: 'ge150-mo-export', mode: 'readwrite' });
-    } catch {
-      return; // cancelled
-    }
-    const exists = async (name: string) => dir.getFileHandle(name).then(() => true, () => false);
-    const taken = [];
-    for (const f of files) if (await exists(f.filename)) taken.push(f.filename);
+    const dir = await pickDirectory('ge150-mo-export', 'readwrite');
+    if (!dir) return;
+    const exists = await Promise.all(files.map((f) => dir.getFileHandle(f.filename).then(() => true, () => false)));
+    const taken = files.filter((_, k) => exists[k]).map((f) => f.filename);
     if (taken.length) {
       message = `Nothing written: ${dir.name} already has ${taken.length} of these files (${taken.slice(0, 3).join(', ')}…). Choose an empty folder.`;
       return;
@@ -267,16 +262,11 @@
    * slot-named files ("01A …"), else by name (factory order when the original exists, else the pedal's names).
    */
   async function importMoFolder() {
-    let dir: FileSystemDirectoryHandle;
-    try {
-      dir = await (window as unknown as { showDirectoryPicker(o?: object): Promise<FileSystemDirectoryHandle> }).showDirectoryPicker({ id: 'ge150-mo-backup' });
-    } catch {
-      return; // cancelled
-    }
+    const dir = await pickDirectory('ge150-mo-backup');
+    if (!dir) return;
     const texts = new Map<string, string>();
-    for await (const entry of (dir as unknown as { values(): AsyncIterable<FileSystemHandle> }).values()) {
-      const lower = entry.name.toLowerCase();
-      if (entry.kind === 'file' && (lower.endsWith('.mo') || entry.name === MANIFEST_FILE)) texts.set(entry.name, await (await (entry as FileSystemFileHandle).getFile()).text());
+    for await (const f of dirFiles(dir)) {
+      if (f.name.toLowerCase().endsWith('.mo') || f.name === MANIFEST_FILE) texts.set(f.name, await (await f.getFile()).text());
     }
     const manifestText = texts.get(MANIFEST_FILE);
     if (manifestText) {
@@ -308,7 +298,7 @@
         // not a preset file
       }
     }
-    const reference = (original?.layout ?? editor.pedalLayout()).map((p) => p?.name);
+    const reference = (original?.layout ?? pedal).map((p) => p?.name);
     const { layout: l, unplaced } = placeByName(files, reference);
     const filled = l.map((p, i) => p ?? layout[i]);
     show(filled, `${dir.name} (${files.length} .mo files, placed by name${original ? ' in factory order' : ''})`, unplaced);
@@ -438,7 +428,7 @@
       <div class="actions">
         <button class="btn" disabled={editor.status !== 'ready' || busy} onclick={backUpPedal}>Back up the pedal now</button>
         <label class="btn">Import a backup file<input type="file" accept=".json,application/json" hidden onchange={importFile} /></label>
-        <button class="btn" disabled={busy || !('showDirectoryPicker' in window)} onclick={importMoFolder}>Place a folder of .mo files…</button>
+        <button class="btn" disabled={busy || !folderSupported()} onclick={importMoFolder}>Place a folder of .mo files…</button>
         {#if !original}
           <label class="btn">Read the factory presets from Mooer's download (.zip, .dmg or .mr)<input type="file" accept=".zip,.dmg,.mr" hidden onchange={importFirmware} /></label>
         {/if}
@@ -451,7 +441,7 @@
             <div class="row">
               <button class="btn sm" disabled={busy} onclick={() => show($state.snapshot(b.layout) as Layout, `the backup "${b.name}"`)}>Show</button>
               <button class="btn sm" onclick={() => download(b)}>Export</button>
-              <button class="btn sm" disabled={!('showDirectoryPicker' in window)} title="One .mo file per slot, named 01A …, into an empty folder" onclick={() => exportMoFiles(b)}>Export .mo files</button>
+              <button class="btn sm" disabled={!folderSupported()} title="One .mo file per slot, named 01A …, into an empty folder" onclick={() => exportMoFiles(b)}>Export .mo files</button>
               <button class="btn sm" disabled={b.locked || busy} onclick={() => remove(b)}>Delete</button>
             </div>
           </li>
@@ -680,20 +670,6 @@
   }
   .slot .mark {
     margin-left: auto;
-  }
-  .mark {
-    font-size: 0.65rem;
-    font-weight: 600;
-    padding: 0 4px;
-    border-radius: 3px;
-  }
-  .mark.modified {
-    background: #b8860b;
-    color: #111;
-  }
-  .mark.new {
-    background: #3a7bd5;
-    color: #fff;
   }
   .legend {
     display: flex;

@@ -13,14 +13,12 @@ export const Cmd = {
   SELECT_PRESET: 0x96,
   RENAME_PRESET: 0x97,
   STORE_PRESET: 0xc3,
-  FOCUS: 0xb4,
   SET_MODULE_BASE: 0x82, // + slot (0..8)
   // device -> host
   PRESET_DUMP: 0x20,
   CURRENT_PRESET: 0x30,
   PRESET_CHANGED: 0x16,
   STORE_ACK: 0x43,
-  FOCUS_CHANGED: 0x34,
   MODULE_BASE: 0x02, // + slot (0..8)
 } as const;
 
