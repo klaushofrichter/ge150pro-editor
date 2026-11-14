@@ -1,4 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
+import { ACCEPTED_KEY, TERMS_VERSION } from './terms';
 
 /** Console errors and uncaught exceptions on a page; checked at the end of every test. */
 function watchErrors(page: Page) {
@@ -13,11 +14,11 @@ const preset = (page: Page, label: string) => page.locator('.presets li button',
 /** Every test but the first-visit one starts as a returning visitor. */
 test.beforeEach(async ({ page }, info) => {
   if (!info.title.startsWith('first visit')) {
-    await page.addInitScript(() => localStorage.setItem('ge150pro-editor.welcome-confirmed', 'e2e'));
+    await page.addInitScript(([k, v]) => localStorage.setItem(k, v), [ACCEPTED_KEY, TERMS_VERSION]);
   }
 });
 
-test('first visit: a panel explains the editor, must be confirmed, and stays away afterwards', async ({ page }) => {
+test('first visit: a panel explains the editor and the terms, must be accepted, and the About button shows it again', async ({ page }) => {
   const errors = watchErrors(page);
   await page.goto('./');
   const panel = page.getByRole('dialog', { name: 'GE150 Pro Editor' });
@@ -26,20 +27,36 @@ test('first visit: a panel explains the editor, must be confirmed, and stays awa
   await expect(panel.getByRole('link', { name: "Mooer's download page" })).toHaveAttribute('href', 'https://www.mooeraudio.com/Downloads_xq/6.html');
   await expect(panel.getByRole('link', { name: 'Mooer GE150 Pro' })).toHaveAttribute('href', 'https://www.mooeraudio.com/products/207.html');
   await expect(panel.getByRole('link', { name: /github\.com\/klaushofrichter\/ge150pro-editor/ })).toBeVisible();
-  // only the button closes it
+  // the terms of use, from TERMS.md
+  await panel.getByRole('button', { name: 'Read the terms of use' }).click();
+  const terms = panel.getByRole('region', { name: 'Terms of use' });
+  await expect(terms).toContainText('No liability');
+  await expect(terms).toContainText('"as is"');
+  // only accepting closes it
   await page.keyboard.press('Escape');
   await page.mouse.click(5, 5);
   await expect(panel).toBeVisible();
-  await panel.getByRole('button', { name: 'I understand and accept the risk' }).click();
+  await panel.getByRole('button', { name: 'I agree to the terms and accept the risk' }).click();
   await expect(panel).toBeHidden();
+  expect(await page.evaluate((k) => localStorage.getItem(k), ACCEPTED_KEY)).toBe(TERMS_VERSION);
   await page.reload();
   await expect(page.getByRole('link', { name: 'Try the demo' })).toBeVisible();
   await expect(panel).toBeHidden();
-  // and can be read again from the tools panel
-  await page.getByRole('button', { name: 'Tools and USB log' }).click();
-  await page.getByRole('button', { name: 'About and factory presets' }).click();
+  // the About button shows it again, now as a plain dialog
+  await page.getByRole('button', { name: 'About, factory presets and terms of use' }).click();
   await expect(panel).toBeVisible();
+  await page.keyboard.press('Escape');
+  await expect(panel).toBeHidden();
+  await page.getByRole('button', { name: 'About, factory presets and terms of use' }).click();
+  await panel.getByRole('button', { name: 'Close' }).click();
+  await expect(panel).toBeHidden();
   expect(errors).toEqual([]);
+});
+
+test('first visit after the terms changed: the panel shows again', async ({ page }) => {
+  await page.addInitScript((k) => localStorage.setItem(k, '2000-01-01'), ACCEPTED_KEY);
+  await page.goto('./');
+  await expect(page.getByRole('button', { name: 'I agree to the terms and accept the risk' })).toBeVisible();
 });
 
 test('without a pedal, the start page offers the demo', async ({ page }) => {

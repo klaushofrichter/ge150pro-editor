@@ -6,3 +6,4 @@ playwright-report/
 # firmware images and anything extracted from them stay on your computer
 work/
 *.mr
+.svelte-check/
