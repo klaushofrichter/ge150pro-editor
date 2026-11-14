@@ -87,7 +87,8 @@ npm run e2e           # browser tests on the built app (demo mode)
 npm run screenshots   # renders docs/screenshots/
 ```
 
-Node 26 (`.nvmrc`). Branches: work on a feature branch, open a pull request to `main`; a release is a pull request
+Node 26 (`.nvmrc`). Type checking uses TypeScript 7 (`@typescript/native`, through `svelte-check --tsgo`); TypeScript 6
+is installed as `typescript` because svelte-check still needs it. Branches: work on a feature branch, open a pull request to `main`; a release is a pull request
 from `main` to `production`. `production` is protected (the `test`, `e2e` and `codeql` checks must pass), and every
 push to it publishes the app on GitHub Pages with a calendar version (`YYYY.MM.DD.N`, shown in the tools panel and as
 a GitHub release).
