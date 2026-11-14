@@ -126,3 +126,10 @@ test('arranging: swap by drag and drop, make a slot empty, undo, and write (demo
   await expect(write).toHaveText(/Write 0 changes/);
   expect(errors).toEqual([]);
 });
+
+test('a narrow desktop window is not a phone: no desktop-only notice', async ({ page }) => {
+  await page.setViewportSize({ width: 500, height: 800 });
+  await page.goto('./?demo');
+  await expect(page.locator('.presets li')).toHaveCount(200);
+  await expect(page.getByText('Desktop only')).toHaveCount(0);
+});
