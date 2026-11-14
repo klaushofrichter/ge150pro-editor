@@ -104,6 +104,7 @@ class EditorState {
   }
 
   async disconnect() {
+    this.dropPendingSends();
     await this.device?.close();
     this.device = null;
     this.status = 'disconnected';
@@ -167,6 +168,7 @@ class EditorState {
 
   private adoptCurrent(index: number) {
     if (index < 1 || index > PRESET_COUNT) return;
+    if (index !== this.current) this.dropPendingSends(); // edits of the preset left behind must not reach the new one
     this.current = index;
     const p = this.presets[index - 1];
     this.live = p ? structuredClone($state.snapshot(p)) : null;
@@ -175,6 +177,7 @@ class EditorState {
 
   async select(index: number) {
     if (!this.device && !this.demo) return;
+    this.dropPendingSends();
     await this.device?.selectPreset(index);
     this.adoptCurrent(index);
   }
@@ -211,7 +214,8 @@ class EditorState {
     if (!d) return;
     if ('MODULE_CTRL' in patch || 'PARA_CTRL' in patch || 'FUN_SWITCH' in patch) d.setExpFunction(exp);
     if ('VOL_SWITCH' in patch || 'VOL_MIN' in patch || 'VOL_MAX' in patch) {
-      this.throttled('expvol', () => d.setExpVolume($state.snapshot(this.live!.exp) as ExpSettings));
+      const send = $state.snapshot(exp) as ExpSettings;
+      this.throttled('expvol', () => d.setExpVolume(send));
     }
   }
 
@@ -227,7 +231,8 @@ class EditorState {
     await this.device.renamePreset(this.live.index, trimmed);
     this.live.name = trimmed;
     const stored = this.presets[this.live.index - 1];
-    if (stored) stored.name = trimmed;
+    // a new object, not a change in place: presets are compared by object (arrange.ts, samePreset)
+    if (stored) this.presets[this.live.index - 1] = { ...($state.snapshot(stored) as Preset), name: trimmed };
   }
 
   exportMo(): { filename: string; json: string } | null {
@@ -273,6 +278,11 @@ class EditorState {
   /** Latest pending send per key while that key is cooling down; null = cooling down, nothing pending. */
   private pendingSends = new Map<string, (() => void) | null>();
 
+  /** Forget sends still waiting in the throttle (another preset, a revert, a disconnect). */
+  private dropPendingSends() {
+    this.pendingSends.clear();
+  }
+
   /** Send immediately, then at most once per interval with the latest value. */
   private throttled(key: string, send: () => void) {
     if (this.pendingSends.has(key)) {
@@ -295,13 +305,14 @@ class EditorState {
   /** Whole-device backup as JSON: every preset in .mo form plus system settings. */
   exportBackup(): { filename: string; json: string } | null {
     if (this.loaded === 0) return null;
+    const created = new Date().toISOString();
+    const stamp = created.slice(0, 19).replace(/[:T]/g, '-');
     const data = {
-      ...layoutToFile(this.pedalLayout(), 'Pedal'),
+      ...layoutToFile(this.pedalLayout(), `GE150PRO backup ${stamp}`, created),
       system: $state.snapshot(this.system),
       globalEq: $state.snapshot(this.globalEq),
       spillOver: this.spillOver,
     };
-    const stamp = data.created.slice(0, 19).replace(/[:T]/g, '-');
     return { filename: `GE150PRO-backup-${stamp}.json`, json: JSON.stringify(data, null, 1) };
   }
 
@@ -428,6 +439,7 @@ class EditorState {
   }
 
   revert() {
+    this.dropPendingSends();
     this.adoptCurrent(this.current);
     // Restore the device's live state to the stored preset.
     this.live?.modules.forEach((m, slot) => this.device?.setModule(slot, $state.snapshot(m) as ModuleState));

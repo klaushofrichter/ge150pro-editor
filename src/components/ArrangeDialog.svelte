@@ -14,8 +14,9 @@
 
   let { onclose }: { onclose: () => void } = $props();
 
-  let layout: Layout = $state(editor.pedalLayout());
-  let history: Layout[] = $state([]);
+  // plain values, replaced on every change (never changed in place): see samePreset's cache in arrange.ts
+  let layout: Layout = $state.raw(editor.pedalLayout());
+  let history: Layout[] = $state.raw([]);
   /** Presets waiting for a slot (from .mo files no slot took, or pushed out by a tray drop). */
   let tray: TrayItem[] = $state([]);
   let showing = $state('the pedal');
@@ -32,9 +33,8 @@
   const pedal = $derived(editor.pedalLayout());
   const changed = $derived(changedSlots(pedal, layout));
   const changedSet = $derived(new Set(changed));
-  const busy = $derived(editor.busy);
   const original = $derived(backups.find((b) => b.id === ORIGINAL_ID));
-  const canWrite = $derived((!!editor.device || editor.demo) && editor.status === 'ready' && changed.length > 0 && !busy);
+  const canWrite = $derived((!!editor.device || editor.demo) && editor.status === 'ready' && changed.length > 0 && !editor.busy);
 
   onMount(refresh);
 
@@ -198,7 +198,13 @@
         : `A backup of GE150 Pro presets (${b.source}), saved ${b.created}.`,
       source: original ? { type: 'firmware', from: b.name } : { type: b.source, saved: b.created },
     });
-    const dir = await pickDirectory('ge150-mo-export', 'readwrite');
+    let dir: FileSystemDirectoryHandle | null;
+    try {
+      dir = await pickDirectory('ge150-mo-export', 'readwrite');
+    } catch (err) {
+      message = `The folder could not be opened: ${err instanceof Error ? err.message : err}`;
+      return;
+    }
     if (!dir) return;
     const exists = await Promise.all(files.map((f) => dir.getFileHandle(f.filename).then(() => true, () => false)));
     const taken = files.filter((_, k) => exists[k]).map((f) => f.filename);
@@ -262,7 +268,13 @@
    * slot-named files ("01A …"), else by name (factory order when the original exists, else the pedal's names).
    */
   async function importMoFolder() {
-    const dir = await pickDirectory('ge150-mo-backup');
+    let dir: FileSystemDirectoryHandle | null;
+    try {
+      dir = await pickDirectory('ge150-mo-backup');
+    } catch (err) {
+      message = `The folder could not be opened: ${err instanceof Error ? err.message : err}`;
+      return;
+    }
     if (!dir) return;
     const texts = new Map<string, string>();
     for await (const f of dirFiles(dir)) {
@@ -322,12 +334,12 @@
   const estimate = (n: number) => Math.ceil((n * 0.6) / 5) * 5;
 </script>
 
-<svelte:window onkeydown={(e) => e.key === 'Escape' && !busy && !confirming && onclose()} />
+<svelte:window onkeydown={(e) => e.key === 'Escape' && !editor.busy && !confirming && onclose()} />
 <div class="backdrop" role="presentation"></div>
 <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="arrange-title">
   <header>
     <h2 id="arrange-title">Arrange and back up presets</h2>
-    <button class="close" aria-label="Close" disabled={busy} onclick={onclose}>✕</button>
+    <button class="close" aria-label="Close" disabled={editor.busy} onclick={onclose}>✕</button>
   </header>
 
   <div class="layout">
@@ -335,9 +347,9 @@
       <div class="bar">
         <span class="muted">Showing {showing}. Drag a preset onto another to swap them; drag a bank's title to swap whole banks.</span>
         <span class="grow"></span>
-        <button class="btn" disabled={!history.length || busy} onclick={undo}>Undo</button>
-        <button class="btn" disabled={busy} onclick={() => show(editor.pedalLayout(), 'the pedal')}>Show the pedal</button>
-        <button class="btn" disabled={!isComplete(layout) || busy} onclick={saveArrangement}>Save as backup</button>
+        <button class="btn" disabled={!history.length || editor.busy} onclick={undo}>Undo</button>
+        <button class="btn" disabled={editor.busy} onclick={() => show(editor.pedalLayout(), 'the pedal')}>Show the pedal</button>
+        <button class="btn" disabled={!isComplete(layout) || editor.busy} onclick={saveArrangement}>Save as backup</button>
         <button class="btn primary" disabled={!canWrite} onclick={() => (confirming = true)}>Write {changed.length} change{changed.length === 1 ? '' : 's'} to the pedal…</button>
       </div>
 
@@ -349,12 +361,12 @@
           <span class="muted small">Click a slot for: make empty, duplicate, rename, replace with a .mo file. Option-drag a preset to copy it; drop a .mo file from the Finder onto a slot to load it there.</span>
         {:else}
           <strong>{presetLabel(selected + 1)} {layout[selected] ? presetName(layout[selected]!) : '—'}</strong>
-          <button class="btn sm" disabled={busy} onclick={() => makeEmpty(selected!)}>Make empty</button>
-          <button class="btn sm" disabled={!layout[selected] || busy} onclick={() => (copyFrom = selected)}>Duplicate…</button>
-          <button class="btn sm" disabled={!layout[selected] || busy} onclick={() => rename(selected!)}>Rename…</button>
-          <label class="btn sm" class:disabled={busy}>
+          <button class="btn sm" disabled={editor.busy} onclick={() => makeEmpty(selected!)}>Make empty</button>
+          <button class="btn sm" disabled={!layout[selected] || editor.busy} onclick={() => (copyFrom = selected)}>Duplicate…</button>
+          <button class="btn sm" disabled={!layout[selected] || editor.busy} onclick={() => rename(selected!)}>Rename…</button>
+          <label class="btn sm" class:disabled={editor.busy}>
             Replace with a .mo file…
-            <input type="file" accept=".mo,application/json" hidden disabled={busy} onchange={pickMo} />
+            <input type="file" accept=".mo,application/json" hidden disabled={editor.busy} onchange={pickMo} />
           </label>
         {/if}
       </div>
@@ -380,7 +392,7 @@
           <div class="bank" class:target={dragOver === `bank:${b}`}>
             <div
               class="bank-title"
-              draggable={!busy}
+              draggable={!editor.busy}
               role="button"
               tabindex="-1"
               ondragstart={(e) => drag(e, `bank:${b}`)}
@@ -401,7 +413,7 @@
                 class:copying={copyFrom !== null}
                 class:target={dragOver === `slot:${i}`}
                 class:selected={selected === i}
-                draggable={!!p && !busy}
+                draggable={!!p && !editor.busy}
                 role="button"
                 tabindex="0"
                 aria-pressed={selected === i}
@@ -426,9 +438,9 @@
     <aside class="backups">
       <h3>Backups</h3>
       <div class="actions">
-        <button class="btn" disabled={editor.status !== 'ready' || busy} onclick={backUpPedal}>Back up the pedal now</button>
+        <button class="btn" disabled={editor.status !== 'ready' || editor.busy} onclick={backUpPedal}>Back up the pedal now</button>
         <label class="btn">Import a backup file<input type="file" accept=".json,application/json" hidden onchange={importFile} /></label>
-        <button class="btn" disabled={busy || !folderSupported()} onclick={importMoFolder}>Place a folder of .mo files…</button>
+        <button class="btn" disabled={editor.busy || !folderSupported()} onclick={importMoFolder}>Place a folder of .mo files…</button>
         {#if !original}
           <label class="btn">Read the factory presets from Mooer's download (.zip, .dmg or .mr)<input type="file" accept=".zip,.dmg,.mr" hidden onchange={importFirmware} /></label>
         {/if}
@@ -439,10 +451,10 @@
             <div class="bname">{b.locked ? '🔒 ' : ''}{b.name}</div>
             <div class="muted small">{fmt(b.created)} · {b.source === 'factory' ? 'factory set, cannot be changed' : b.source}</div>
             <div class="row">
-              <button class="btn sm" disabled={busy} onclick={() => show($state.snapshot(b.layout) as Layout, `the backup "${b.name}"`)}>Show</button>
+              <button class="btn sm" disabled={editor.busy} onclick={() => show($state.snapshot(b.layout) as Layout, `the backup "${b.name}"`)}>Show</button>
               <button class="btn sm" onclick={() => download(b)}>Export</button>
               <button class="btn sm" disabled={!folderSupported()} title="One .mo file per slot, named 01A …, into an empty folder" onclick={() => exportMoFiles(b)}>Export .mo files</button>
-              <button class="btn sm" disabled={b.locked || busy} onclick={() => remove(b)}>Delete</button>
+              <button class="btn sm" disabled={b.locked || editor.busy} onclick={() => remove(b)}>Delete</button>
             </div>
           </li>
         {:else}

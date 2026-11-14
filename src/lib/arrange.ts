@@ -28,9 +28,10 @@ export function canonical(p: Preset): Preset {
 }
 
 /**
- * The bytes a preset compares by: as the pedal would store it, in no particular slot. Cached per preset object
- * (presets in layouts are treated as values: changes make new objects), so comparing a layout with the pedal after an
- * edit encodes only the presets that changed.
+ * The bytes a preset compares by: as the pedal would store it, in no particular slot. Cached per preset object, so
+ * comparing a layout with the pedal after an edit encodes only the presets that changed. This relies on presets being
+ * values: every change makes a new object (the Arrange dialog keeps plain, unproxied layouts; the store replaces
+ * presets instead of changing them in place).
  */
 const compareBytes = new WeakMap<Preset, Uint8Array>();
 function bytesOf(p: Preset): Uint8Array {
@@ -121,7 +122,13 @@ export type Origin = 'original' | 'modified' | 'new' | 'empty';
  */
 export function originsFrom(original: Layout | null): (p: Preset | null | undefined) => Origin | null {
   const byName = new Map<string, Preset[]>();
-  for (const o of original ?? []) if (o) byName.set(presetName(o), [...(byName.get(presetName(o)) ?? []), o]);
+  for (const o of original ?? []) {
+    if (!o) continue;
+    const name = presetName(o);
+    const list = byName.get(name);
+    if (list) list.push(o);
+    else byName.set(name, [o]);
+  }
   return (p) => {
     if (!p) return null;
     if (isEmptyPreset(p)) return 'empty';
@@ -132,11 +139,10 @@ export function originsFrom(original: Layout | null): (p: Preset | null | undefi
   };
 }
 
-/**
- * Put a waiting preset (from the tray) into a slot; the preset it replaces goes to the tray, so nothing is lost.
- */
+/** A preset waiting for a slot, and the file (or slot) it came from. */
 export type TrayItem = { file: string; preset: Preset };
 
+/** Put a waiting preset (from the tray) into a slot; the preset it replaces goes to the tray, so nothing is lost. */
 export function placeFromTray(layout: Layout, tray: TrayItem[], item: number, slot: number): { layout: Layout; tray: TrayItem[] } {
   const next = [...layout];
   const out = next[slot];

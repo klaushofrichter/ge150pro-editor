@@ -62,7 +62,14 @@ async function unlessLocked(id: string, verb: string, write: (s: IDBObjectStore)
         if (existing?.locked) {
           refused = new Error(`"${existing.name}" is locked and cannot be ${verb}`);
           tx.abort();
-        } else write(store);
+          return;
+        }
+        try {
+          write(store);
+        } catch (e) {
+          refused = e instanceof Error ? e : new Error(String(e)); // e.g. a value IndexedDB cannot store
+          tx.abort();
+        }
       };
       tx.oncomplete = () => resolve();
       tx.onabort = () => reject(refused ?? tx.error);

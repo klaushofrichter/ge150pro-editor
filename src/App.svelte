@@ -14,10 +14,10 @@
   import { RHYTHM_MODES, styleName } from './lib/protocol/rhythm';
   import { expLabel } from './lib/protocol/exp';
   import { editor } from './lib/store.svelte';
-  import { askPresetName, downloadText, folderSupported as canOpenFolders } from './lib/files';
+  import { askPresetName, downloadText, folderSupported } from './lib/files';
+  import { trimName } from './lib/arrange';
 
   const supported = GE150Pro.supported();
-  const folderSupported = canOpenFolders();
   let showSettings = $state(false);
   let showSystem = $state(false);
   let showExp = $state(false);
@@ -33,7 +33,6 @@
   let notice = $state('');
   /** On a phone, a notice instead of the editor, until "Show it anyway". */
   let phone = $state(isPhone());
-  const label = paddedLabel;
 
   onMount(() => {
     if (phone) return;
@@ -59,14 +58,24 @@
 
   async function store() {
     if (!editor.live) return;
-    const name = askPresetName(`Store to ${presetLabel(editor.live.index)} on the device. Preset name`, editor.live.name);
-    if (name) await editor.store(name);
+    const name = askPresetName(`Store to ${presetLabel(editor.live.index)} on the device. Preset name`, trimName(editor.live.name));
+    if (name === null) return;
+    // an empty or unchanged name keeps the preset's name as it is (its stored bytes included)
+    await editor.store(name && name !== trimName(editor.live.name) ? name : undefined);
   }
 
   async function rename() {
     if (!editor.live) return;
-    const name = askPresetName('Rename preset', editor.live.name);
-    if (name && name !== editor.live.name) await editor.rename(name);
+    const name = askPresetName('Rename preset', trimName(editor.live.name));
+    if (name && name !== trimName(editor.live.name)) await editor.rename(name);
+  }
+
+  async function chooseFolder() {
+    try {
+      await editor.chooseFolder();
+    } catch (err) {
+      notice = `The folder could not be opened: ${err instanceof Error ? err.message : err}`;
+    }
   }
 
   function exportMo() {
@@ -214,7 +223,7 @@
             {@const origin = editor.originOf(editor.presets[i - 1])}
             <li>
               <button class:active={i === editor.current} class:unused={origin === 'empty'} disabled={!editor.device && !editor.demo} onclick={() => editor.select(i)}>
-                {label(i)}&nbsp; {editor.presets[i - 1]?.name ?? ''}
+                {paddedLabel(i)}&nbsp; {editor.presets[i - 1]?.name ?? ''}
                 {#if origin === 'modified'}<span class="mark modified" title="Modified: the original set has this name with another sound">M</span>{:else if origin === 'new'}<span class="mark new" title="New: not in the original set">N</span>{/if}
               </button>
             </li>
@@ -225,7 +234,7 @@
         <h2>
           COMPUTER
           <span class="tools">
-            <button class="icon-sm" aria-label="Choose preset folder" title={folderSupported ? 'Choose a folder with .mo files' : 'Folder access needs Chrome or Edge'} disabled={!folderSupported} onclick={() => editor.chooseFolder()}>
+            <button class="icon-sm" aria-label="Choose preset folder" title={folderSupported() ? 'Choose a folder with .mo files' : 'Folder access needs Chrome or Edge'} disabled={!folderSupported()} onclick={chooseFolder}>
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 6h7l2 2h9v11H3z" /></svg>
             </button>
             <button class="icon-sm" aria-label="Refresh folder" onclick={() => editor.refreshFolder()}>
