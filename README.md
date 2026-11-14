@@ -74,6 +74,7 @@ read-only.
 
 - Google Chrome or Microsoft Edge on a computer (Windows, macOS, Linux): the page talks to the pedal over
   [WebHID](https://developer.mozilla.org/docs/Web/API/WebHID_API). Safari and Firefox do not support it.
+  Phones cannot connect and get a short "desktop only" notice instead of the editor (with a way to look anyway).
 - The pedal connected by USB, and Mooer's editor closed: only one program can use the pedal at a time.
 - Tested with firmware V2.1.2.
 

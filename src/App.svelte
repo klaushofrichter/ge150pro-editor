@@ -6,6 +6,7 @@
   import ExpPanel from './components/ExpPanel.svelte';
   import ArrangeDialog from './components/ArrangeDialog.svelte';
   import WelcomeDialog, { termsAccepted } from './components/WelcomeDialog.svelte';
+  import DesktopOnly, { isPhone } from './components/DesktopOnly.svelte';
   import Toggle from './components/Toggle.svelte';
   import { catalog } from './lib/catalog';
   import { GE150Pro } from './lib/device';
@@ -29,13 +30,25 @@
     showWelcome = true;
   }
   let notice = $state('');
+  /** On a phone, a notice instead of the editor, until "Show it anyway". */
+  let phone = $state(isPhone());
   const label = (i: number) => presetLabel(i).padStart(3, '0');
 
   onMount(() => {
+    if (phone) return;
+    start();
+  });
+
+  function start() {
     editor.loadOriginal();
     if (new URLSearchParams(location.search).has('demo')) editor.loadDemo();
     else if (supported) editor.connect(true);
-  });
+  }
+
+  function showAnyway() {
+    phone = false;
+    start();
+  }
 
   let presetList: HTMLOListElement | undefined = $state();
   $effect(() => {
@@ -86,6 +99,9 @@
 
 </script>
 
+{#if phone}
+  <DesktopOnly oncontinue={showAnyway} />
+{:else}
 <div class="app">
   <header class="top">
     <div class="box preset-nav">
@@ -261,6 +277,7 @@
     </main>
   </div>
 </div>
+{/if}
 
 <style>
   .app {
