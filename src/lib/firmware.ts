@@ -44,9 +44,17 @@ function indexOf(hay: Uint8Array, needle: Uint8Array, from = 0): number {
   return -1;
 }
 
+const concat = (a: Uint8Array, b: Uint8Array) => {
+  const out = new Uint8Array(a.length + b.length);
+  out.set(a);
+  out.set(b, a.length);
+  return out;
+};
+
 /**
  * Looks for a table of `length` bytes starting with `anchor` and hashing to `sha256` in bytes that arrive in pieces
- * (the table may span pieces). `push` returns the table once it has been seen whole.
+ * (the table may span pieces). `push` returns the table once it has been seen whole. Pieces are scanned in place; only
+ * a table candidate that runs past a piece, or the few bytes an anchor could start in, are carried over.
  */
 export class TableScanner {
   private carry = new Uint8Array(0);
@@ -57,20 +65,49 @@ export class TableScanner {
     private sha256 = FACTORY_TABLE_SHA256,
   ) {}
 
+  /** A candidate is waiting for more bytes (as opposed to a short tail an anchor might start in). */
+  private get pending() {
+    return this.carry.length >= this.anchor.length;
+  }
+
+  private async check(bytes: Uint8Array): Promise<Uint8Array | null> {
+    return (await sha256Hex(bytes)) === this.sha256 ? bytes.slice() : null;
+  }
+
   async push(piece: Uint8Array): Promise<Uint8Array | null> {
-    const buf = new Uint8Array(this.carry.length + piece.length);
-    buf.set(this.carry);
-    buf.set(piece, this.carry.length);
-    for (let at = indexOf(buf, this.anchor); at >= 0; at = indexOf(buf, this.anchor, at + 1)) {
-      if (at + this.length > buf.length) {
-        this.carry = buf.slice(at); // the rest of this candidate comes with the next piece
+    // anchors that start in the carried bytes: they need only the first `length` bytes of this piece
+    if (this.carry.length) {
+      const seam = concat(this.carry, piece.subarray(0, this.length));
+      const starts = this.carry.length;
+      this.carry = new Uint8Array(0);
+      for (let at = indexOf(seam, this.anchor); at >= 0 && at < starts; at = indexOf(seam, this.anchor, at + 1)) {
+        if (at + this.length > seam.length) {
+          this.carry = concat(seam.subarray(at), piece.subarray(seam.length - starts)); // still not whole
+          return null;
+        }
+        const table = await this.check(seam.subarray(at, at + this.length));
+        if (table) return table;
+      }
+    }
+    for (let at = indexOf(piece, this.anchor); at >= 0; at = indexOf(piece, this.anchor, at + 1)) {
+      if (at + this.length > piece.length) {
+        this.carry = piece.slice(at);
         return null;
       }
-      const table = buf.slice(at, at + this.length);
-      if ((await sha256Hex(table)) === this.sha256) return table;
+      const table = await this.check(piece.subarray(at, at + this.length));
+      if (table) return table;
     }
-    this.carry = buf.slice(Math.max(0, buf.length - this.anchor.length + 1));
+    this.carry = piece.slice(Math.max(0, piece.length - this.anchor.length + 1));
     return null;
+  }
+
+  /** `n` zero bytes (an empty region of a disk image): they can only matter to a candidate that is still open. */
+  async pushZeros(n: number): Promise<Uint8Array | null> {
+    if (!this.pending) {
+      this.carry = new Uint8Array(0);
+      return null;
+    }
+    return this.push(new Uint8Array(Math.min(n, this.length)));
   }
 }
 
@@ -135,12 +172,11 @@ async function scanDmg(dmg: Uint8Array): Promise<Uint8Array | null> {
       const sectors = u64be(mish, e + 16);
       const off = dataFork + u64be(mish, e + 24);
       const len = u64be(mish, e + 32);
-      let piece: Uint8Array | null = null;
-      if (type === 0x80000005) piece = await inflate(dmg.subarray(off, off + len), 'deflate');
-      else if (type === 1) piece = dmg.subarray(off, off + len);
-      else if (type === 0 || type === 2) piece = new Uint8Array(sectors * 512);
-      if (!piece) continue; // comments, end marker; other compressions (bzip2, lzfse) are not used by Mooer's images
-      const table = await scanner.push(piece);
+      let table: Uint8Array | null = null;
+      if (type === 0x80000005) table = await scanner.push(await inflate(dmg.subarray(off, off + len), 'deflate'));
+      else if (type === 1) table = await scanner.push(dmg.subarray(off, off + len));
+      else if (type === 0 || type === 2) table = await scanner.pushZeros(sectors * 512);
+      // other chunk types: comments, the end marker; other compressions (bzip2, lzfse) are not used by Mooer's images
       if (table) return table;
     }
   }

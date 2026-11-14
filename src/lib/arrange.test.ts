@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
-  atSlot, canonical, moSet, parseManifest, placeByManifest, changedSlots, copyAs, copyName, emptyPreset, layoutToMoFiles, originOf, slotOfFile, fileToLayout, isComplete, layoutToFile, placeByName, samePreset, swapBanks, swapSlots,
+  atSlot, canonical, moSet, parseManifest, placeByManifest, changedSlots, copyAs, copyName, emptyPreset, layoutToMoFiles, originsFrom, placeFromTray, slotOfFile, fileToLayout, isComplete, layoutToFile, placeByName, samePreset, swapBanks, swapSlots,
   type Layout,
 } from './arrange';
 import { presetToMo } from './protocol/mo';
@@ -49,20 +49,20 @@ describe('arranging', () => {
 describe('compared with the original', () => {
   const original = full();
   it('is original when name and sound match, in any slot', () => {
-    expect(originOf(atSlot(original[7]!, 100), original)).toBe('original');
+    expect(originsFrom(original)(atSlot(original[7]!, 100))).toBe('original');
   });
   it('is modified when the name is known but the sound differs', () => {
     const p = atSlot(original[7]!, 8);
     p.modules[0] = { ...p.modules[0], values: [99, ...p.modules[0].values.slice(1)] };
-    expect(originOf(p, original)).toBe('modified');
+    expect(originsFrom(original)(p)).toBe('modified');
   });
   it('ignores values the model does not use (lost in .mo files, set by the pedal)', () => {
     const p = atSlot(original[7]!, 8);
     p.modules[8] = { ...p.modules[8], values: p.modules[8].values.map((v, k) => (k === 9 ? 65 : v)) };
-    expect(originOf(p, original)).toBe('original');
+    expect(originsFrom(original)(p)).toBe('original');
   });
   it('is new when the original has no such name, a renamed original included', () => {
-    expect(originOf({ ...original[7]!, name: 'My Tone' }, original)).toBe('new');
+    expect(originsFrom(original)({ ...original[7]!, name: 'My Tone' })).toBe('new');
   });
 });
 
@@ -87,8 +87,8 @@ describe('empty slots and copies', () => {
     expect(body[0]).toBe(30);
     expect(String.fromCharCode(...body.subarray(1, 17))).toBe('Empty           ');
     expect(e.modules.every((m) => !m.on && m.type === 0)).toBe(true);
-    expect(originOf(e, full())).toBe('empty');
-    expect(originOf({ ...e, name: 'Empty' }, full())).toBe('empty');
+    expect(originsFrom(full())(e)).toBe('empty');
+    expect(originsFrom(full())({ ...e, name: 'Empty' })).toBe('empty');
   });
 
   it('a copy has a free name and counts as new', () => {
@@ -100,26 +100,44 @@ describe('empty slots and copies', () => {
     const c = copyAs(l[0]!, 'My Tone', 99);
     expect(c.index).toBe(99);
     expect(c.modules).toEqual(l[0]!.modules);
-    expect(originOf(c, full())).toBe('new');
+    expect(originsFrom(full())(c)).toBe('new');
   });
 });
 
 describe('placing .mo files by name', () => {
   const file = (name: string, gain = 50) => ({ file: `${name}.mo`, mo: presetToMo(preset(name.padEnd(16, ' '), gain)) });
 
-  it('fills slots by name, duplicates in every slot, hints for renamed slots, the rest unplaced', () => {
+  it('fills slots by name, a name shown twice in both slots, the rest unplaced', () => {
     const reference = Array.from({ length: PRESET_COUNT }, (_, i) => `P${i + 1}`);
-    reference[4] = 'TEST01'; // renamed on the pedal since the backup
-    reference[7] = 'P1'; // a name the pedal shows twice
-    const files = [file('P1'), file('P2'), file('US Blues Clean'), file('Orphan')];
-    const { layout, unplaced } = placeByName(files, reference, { 5: 'US Blues Clean' });
+    reference[7] = 'P1'; // a name the reference shows twice
+    const files = [file('P1'), file('P2'), file('Orphan')];
+    const { layout, unplaced } = placeByName(files, reference);
     expect(layout[0]!.name.trim()).toBe('P1');
     expect(layout[7]!.name.trim()).toBe('P1');
     expect(layout[1]!.name.trim()).toBe('P2');
-    expect(layout[4]!.name.trim()).toBe('US Blues Clean');
     expect(layout[2]).toBeNull();
     expect(unplaced.map((u) => u.file)).toEqual(['Orphan.mo']);
     expect(isComplete(layout)).toBe(false);
+  });
+});
+
+describe('the tray', () => {
+  it('puts a waiting preset into a slot and moves the one it replaces to the tray', () => {
+    const l = full();
+    const tray = [{ file: 'a.mo', preset: preset('Waiting') }];
+    const got = placeFromTray(l, tray, 0, 9);
+    expect(got.layout[9]!.name).toBe('Waiting');
+    expect(got.layout[9]!.index).toBe(10);
+    expect(got.tray).toEqual([{ file: 'from 3B', preset: l[9] }]);
+    const empty = [...l];
+    empty[9] = null;
+    expect(placeFromTray(empty, tray, 0, 9).tray).toEqual([]);
+  });
+
+  it('the M and N marks without an original: only empty slots are told apart', () => {
+    expect(originsFrom(null)(full()[0])).toBeNull();
+    expect(originsFrom(null)(emptyPreset(3))).toBe('empty');
+    expect(originsFrom(null)(null)).toBeNull();
   });
 });
 
