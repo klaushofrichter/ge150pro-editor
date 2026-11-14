@@ -1,0 +1,8 @@
+node_modules/
+dist/
+.DS_Store
+test-results/
+playwright-report/
+# firmware images and anything extracted from them stay on your computer
+work/
+*.mr

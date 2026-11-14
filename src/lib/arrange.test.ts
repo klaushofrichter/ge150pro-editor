@@ -1,0 +1,205 @@
+import { describe, expect, it } from 'vitest';
+import {
+  atSlot, canonical, moSet, parseManifest, placeByManifest, changedSlots, copyAs, copyName, emptyPreset, factoryFromFirmware, layoutToMoFiles, originOf, slotOfFile, fileToLayout, isComplete, layoutToFile, placeByName, samePreset, swapBanks, swapSlots,
+  type Layout,
+} from './arrange';
+import { presetToMo } from './protocol/mo';
+import { encodePreset, PRESET_COUNT, type Preset } from './protocol/preset';
+
+const preset = (name: string, gain = 50): Preset => ({
+  index: 1,
+  name,
+  modules: Array.from({ length: 9 }, (_, s) => ({ on: s % 2 === 0, type: 0, values: [gain, 0, 0, 0, 0, 0, 0, 0, 0, 0] })),
+  exp: { MODULE_CTRL: 8, PARA_CTRL: 57, FUN_SWITCH: 1, VOL_SWITCH: 1, VOL_MIN: 0, VOL_MAX: 100 },
+});
+const full = (): Layout => Array.from({ length: PRESET_COUNT }, (_, i) => atSlot(preset(`P${i + 1}`), i + 1));
+const names = (l: Layout) => l.map((p) => p?.name ?? null);
+
+describe('arranging', () => {
+  it('swaps two slots without losing either preset', () => {
+    const l = swapSlots(full(), 0, 199);
+    expect(l[0]!.name).toBe('P200');
+    expect(l[199]!.name).toBe('P1');
+    expect(new Set(names(l)).size).toBe(PRESET_COUNT);
+  });
+
+  it('swaps whole banks and keeps A-D order', () => {
+    const l = swapBanks(full(), 0, 49);
+    expect(names(l).slice(0, 4)).toEqual(['P197', 'P198', 'P199', 'P200']);
+    expect(names(l).slice(196)).toEqual(['P1', 'P2', 'P3', 'P4']);
+  });
+
+  it('compares content, not the slot a preset came from', () => {
+    expect(samePreset(atSlot(preset('A'), 3), atSlot(preset('A'), 9))).toBe(true);
+    expect(samePreset(preset('A'), preset('A', 51))).toBe(false);
+    expect(samePreset(preset('A'), preset('B'))).toBe(false);
+  });
+
+  it('lists only the slots whose preset changes, and ignores unfilled ones', () => {
+    const pedal = full();
+    const target = swapSlots(pedal, 0, 1);
+    target[10] = null;
+    expect(changedSlots(pedal, target)).toEqual([1, 2]);
+    // moving the last into the first place and shifting the rest changes every slot
+    const shifted = [pedal[199], ...pedal.slice(0, 199)];
+    expect(changedSlots(pedal, shifted)).toHaveLength(PRESET_COUNT);
+  });
+});
+
+describe('compared with the original', () => {
+  const original = full();
+  it('is original when name and sound match, in any slot', () => {
+    expect(originOf(atSlot(original[7]!, 100), original)).toBe('original');
+  });
+  it('is modified when the name is known but the sound differs', () => {
+    const p = atSlot(original[7]!, 8);
+    p.modules[0] = { ...p.modules[0], values: [99, ...p.modules[0].values.slice(1)] };
+    expect(originOf(p, original)).toBe('modified');
+  });
+  it('ignores values the model does not use (lost in .mo files, set by the pedal)', () => {
+    const p = atSlot(original[7]!, 8);
+    p.modules[8] = { ...p.modules[8], values: p.modules[8].values.map((v, k) => (k === 9 ? 65 : v)) };
+    expect(originOf(p, original)).toBe('original');
+  });
+  it('is new when the original has no such name, a renamed original included', () => {
+    expect(originOf({ ...original[7]!, name: 'My Tone' }, original)).toBe('new');
+  });
+});
+
+describe('as the pedal stores it', () => {
+  it('corrects an EXP parameter of another module and an unknown model, and compares that way', () => {
+    const p = preset('X');
+    p.exp = { ...p.exp, MODULE_CTRL: 2, PARA_CTRL: 5 }; // AMP has 13-18
+    p.modules[1] = { ...p.modules[1], type: 54 }; // DS has 28 models
+    const c = canonical(p);
+    expect(c.exp.PARA_CTRL).toBe(13);
+    expect(c.modules[1].type).toBe(0);
+    expect(canonical({ ...p, exp: { ...p.exp, MODULE_CTRL: 1, PARA_CTRL: 2 } }).exp.PARA_CTRL).toBe(10);
+    expect(samePreset(p, c)).toBe(true);
+    expect(canonical(preset('Y'))).toEqual(preset('Y'));
+  });
+});
+
+describe('empty slots and copies', () => {
+  it('an empty slot is the pedal\'s own "Empty" preset, byte for byte', () => {
+    const e = emptyPreset(30);
+    const body = encodePreset(e);
+    expect(body[0]).toBe(30);
+    expect(String.fromCharCode(...body.subarray(1, 17))).toBe('Empty           ');
+    expect(e.modules.every((m) => !m.on && m.type === 0)).toBe(true);
+    expect(originOf(e, full())).toBe('empty');
+    expect(originOf({ ...e, name: 'Empty' }, full())).toBe('empty');
+  });
+
+  it('a copy has a free name and counts as new', () => {
+    const l = full();
+    l[5] = { ...l[5]!, name: 'P1 2' };
+    expect(copyName(l[0]!, l)).toBe('P1 3');
+    const long = { ...l[0]!, name: 'Sixteen chars 16' };
+    expect(copyName(long, l)).toBe('Sixteen chars 2');
+    const c = copyAs(l[0]!, 'My Tone', 99);
+    expect(c.index).toBe(99);
+    expect(c.modules).toEqual(l[0]!.modules);
+    expect(originOf(c, full())).toBe('new');
+  });
+});
+
+describe('placing .mo files by name', () => {
+  const file = (name: string, gain = 50) => ({ file: `${name}.mo`, mo: presetToMo(preset(name.padEnd(16, ' '), gain)) });
+
+  it('fills slots by name, duplicates in every slot, hints for renamed slots, the rest unplaced', () => {
+    const reference = Array.from({ length: PRESET_COUNT }, (_, i) => `P${i + 1}`);
+    reference[4] = 'TEST01'; // renamed on the pedal since the backup
+    reference[7] = 'P1'; // a name the pedal shows twice
+    const files = [file('P1'), file('P2'), file('US Blues Clean'), file('Orphan')];
+    const { layout, unplaced } = placeByName(files, reference, { 5: 'US Blues Clean' });
+    expect(layout[0]!.name.trim()).toBe('P1');
+    expect(layout[7]!.name.trim()).toBe('P1');
+    expect(layout[1]!.name.trim()).toBe('P2');
+    expect(layout[4]!.name.trim()).toBe('US Blues Clean');
+    expect(layout[2]).toBeNull();
+    expect(unplaced.map((u) => u.file)).toEqual(['Orphan.mo']);
+    expect(isComplete(layout)).toBe(false);
+  });
+});
+
+describe('.mo file sets', () => {
+  it('name each file by its slot, so a folder sorts and imports in slot order', () => {
+    const l = full();
+    l[0] = { ...l[0]!, name: 'AC/DC: Live?' };
+    const files = layoutToMoFiles(l);
+    expect(files).toHaveLength(PRESET_COUNT);
+    expect(files[0].filename).toBe('01A AC_DC_ Live_.mo');
+    expect(files[199].filename).toBe('50D P200.mo');
+    expect(slotOfFile(files[199].filename)).toBe(200);
+    expect(slotOfFile('Brit 800 Drive.mo')).toBeNull();
+  });
+
+  it('import back into the same slots, whatever the names', () => {
+    const l = full();
+    l[3] = { ...l[3]!, name: 'P1' }; // a duplicate name stays in its own slot
+    const files = layoutToMoFiles(l).map((f) => ({ file: f.filename, mo: JSON.parse(f.json) }));
+    const { layout, unplaced } = placeByName(files.reverse(), []);
+    expect(unplaced).toEqual([]);
+    l.forEach((p, i) => expect(layout[i]!.name).toBe(p!.name));
+  });
+});
+
+describe('preset sets with a manifest', () => {
+  it('describe the set and every file, and import back by the manifest', async () => {
+    const l = full();
+    const files = await moSet(l, { name: 'Factory', kind: 'original', immutable: true, description: 'test', source: { type: 'firmware', version: 'V2.1.2' } }, '2026-11-14T10:00:00Z');
+    expect(files).toHaveLength(PRESET_COUNT + 1);
+    const m = parseManifest(files.at(-1)!.json);
+    expect(m).toMatchObject({ kind: 'original', immutable: true, created: '2026-11-14T10:00:00Z', source: { version: 'V2.1.2' } });
+    expect(m.presets[0]).toMatchObject({ slot: '01A', file: '01A P1.mo', name: 'P1' });
+    const folder = new Map(files.map((f) => [f.filename, f.json]));
+    let got = await placeByManifest(m, folder);
+    expect(got.changed).toEqual([]);
+    l.forEach((p, i) => expect(samePreset(got.layout[i], p)).toBe(true));
+    // a changed and a missing file are reported
+    folder.set('01A P1.mo', folder.get('01A P1.mo')!.replace('"SWITCH": 1', '"SWITCH": 0'));
+    folder.delete('50D P200.mo');
+    got = await placeByManifest(m, folder);
+    expect(got.changed).toEqual(['01A P1.mo']);
+    expect(got.missing).toEqual(['50D P200.mo']);
+  });
+});
+
+describe('backup files', () => {
+  it('round-trip a layout, including unfilled slots', () => {
+    const l = full();
+    l[3] = null;
+    const back = fileToLayout(JSON.parse(JSON.stringify(layoutToFile(l, 'test'))));
+    expect(back.name).toBe('test');
+    expect(back.layout[3]).toBeNull();
+    l.forEach((p, i) => p && expect(samePreset(back.layout[i], p)).toBe(true));
+    expect(back.layout[199]!.index).toBe(200);
+  });
+
+  it('refuse other files', () => {
+    expect(() => fileToLayout({ format: 'x' })).toThrow(/not a GE150 Pro backup/);
+    expect(() => fileToLayout({ format: 'ge150pro-web-backup', version: 1, presets: [{ index: 201, mo: {} }] })).toThrow(/out of range/);
+  });
+});
+
+describe('the factory set in a firmware image', async () => {
+  it('refuses any file that is not a known firmware image', async () => {
+    expect(await factoryFromFirmware(new Uint8Array(1_200_000).fill(7))).toBeNull();
+  });
+
+  // The images are not in the repository: these run where a local copy exists (work/firmware/).
+  const fs = (await import(/* @vite-ignore */ `node:${'fs'}`)) as { existsSync(p: URL): boolean; readFileSync(p: URL): Uint8Array };
+  for (const version of ['V2.1.2', 'V2.1.4']) {
+    const local = new URL(`../../work/firmware/GE150PRO_${version}.mr`, import.meta.url);
+    it.runIf(fs.existsSync(local))(`reads the ${version} factory table`, async () => {
+      const got = (await factoryFromFirmware(new Uint8Array(fs.readFileSync(local))))!;
+      expect(got.version).toBe(version);
+      const l = got.layout;
+      expect(l.slice(0, 5).map((p) => p!.name)).toEqual(['65 Deluxe', '65 Twin', '59 Bassguy', 'Sonic Drive', 'US Blues Clean']);
+      expect(l[199]!.name).toBe('Dual Lead');
+      expect(l.every((p) => p!.modules.every((m) => m.values.length === 10))).toBe(true);
+      expect(l[0]!.modules[8].values[4]).toBe(65);
+    });
+  }
+});

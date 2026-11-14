@@ -1,0 +1,29 @@
+/* Dark theme modeled on the official GE150 PRO editor. */
+:root {
+  --bg: #3a3b3e;
+  --panel: #45464a;
+  --well: #26272a;
+  --tab: #3f4044;
+  --hover: #3a3b3f;
+  --line: #5c5d61;
+  --text: #f1f1ee;
+  --muted: #a3a4a0;
+  --accent: #a3cc1b;
+  --on-accent: #17200a;
+  --danger: #ff8a80;
+  --warn: #ffd166;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+html, body, #app { height: 100%; margin: 0; }
+body {
+  background: var(--bg);
+  color: var(--text);
+  font: 15px/1.4 'Helvetica Neue', system-ui, -apple-system, 'Segoe UI', sans-serif;
+}
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+button:disabled { opacity: 0.45; }
+.sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar-thumb { background: #6b6c70; border-radius: 4px; }
+::-webkit-scrollbar-track { background: transparent; }
