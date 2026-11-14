@@ -10,13 +10,14 @@
   import Toggle from './components/Toggle.svelte';
   import { catalog } from './lib/catalog';
   import { GE150Pro } from './lib/device';
-  import { PRESET_COUNT, presetLabel } from './lib/protocol/preset';
+  import { paddedLabel, PRESET_COUNT, presetLabel } from './lib/protocol/preset';
   import { RHYTHM_MODES, styleName } from './lib/protocol/rhythm';
   import { expLabel } from './lib/protocol/exp';
   import { editor } from './lib/store.svelte';
+  import { askPresetName, downloadText, folderSupported } from './lib/files';
+  import { trimName } from './lib/arrange';
 
   const supported = GE150Pro.supported();
-  const folderSupported = typeof window !== 'undefined' && 'showDirectoryPicker' in window;
   let showSettings = $state(false);
   let showSystem = $state(false);
   let showExp = $state(false);
@@ -32,7 +33,6 @@
   let notice = $state('');
   /** On a phone, a notice instead of the editor, until "Show it anyway". */
   let phone = $state(isPhone());
-  const label = (i: number) => presetLabel(i).padStart(3, '0');
 
   onMount(() => {
     if (phone) return;
@@ -58,23 +58,29 @@
 
   async function store() {
     if (!editor.live) return;
-    const name = prompt(`Store to ${presetLabel(editor.live.index)} on the device. Preset name (max 16):`, editor.live.name);
+    const name = askPresetName(`Store to ${presetLabel(editor.live.index)} on the device. Preset name`, trimName(editor.live.name));
     if (name === null) return;
-    await editor.store(name);
+    // an empty or unchanged name keeps the preset's name as it is (its stored bytes included)
+    await editor.store(name && name !== trimName(editor.live.name) ? name : undefined);
   }
 
   async function rename() {
     if (!editor.live) return;
-    const name = prompt('Rename preset (max 16 characters):', editor.live.name);
-    if (name !== null && name !== editor.live.name) await editor.rename(name);
+    const name = askPresetName('Rename preset', trimName(editor.live.name));
+    if (name && name !== trimName(editor.live.name)) await editor.rename(name);
+  }
+
+  async function chooseFolder() {
+    try {
+      await editor.chooseFolder();
+    } catch (err) {
+      notice = `The folder could not be opened: ${err instanceof Error ? err.message : err}`;
+    }
   }
 
   function exportMo() {
     const out = editor.exportMo();
-    if (!out) return;
-    const url = URL.createObjectURL(new Blob([out.json], { type: 'application/json' }));
-    Object.assign(document.createElement('a'), { href: url, download: out.filename }).click();
-    URL.revokeObjectURL(url);
+    if (out) downloadText(out.filename, out.json);
   }
 
   async function importFile(e: Event & { currentTarget: HTMLInputElement }) {
@@ -217,7 +223,7 @@
             {@const origin = editor.originOf(editor.presets[i - 1])}
             <li>
               <button class:active={i === editor.current} class:unused={origin === 'empty'} disabled={!editor.device && !editor.demo} onclick={() => editor.select(i)}>
-                {label(i)}&nbsp; {editor.presets[i - 1]?.name ?? ''}
+                {paddedLabel(i)}&nbsp; {editor.presets[i - 1]?.name ?? ''}
                 {#if origin === 'modified'}<span class="mark modified" title="Modified: the original set has this name with another sound">M</span>{:else if origin === 'new'}<span class="mark new" title="New: not in the original set">N</span>{/if}
               </button>
             </li>
@@ -228,7 +234,7 @@
         <h2>
           COMPUTER
           <span class="tools">
-            <button class="icon-sm" aria-label="Choose preset folder" title={folderSupported ? 'Choose a folder with .mo files' : 'Folder access needs Chrome or Edge'} disabled={!folderSupported} onclick={() => editor.chooseFolder()}>
+            <button class="icon-sm" aria-label="Choose preset folder" title={folderSupported() ? 'Choose a folder with .mo files' : 'Folder access needs Chrome or Edge'} disabled={!folderSupported()} onclick={chooseFolder}>
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 6h7l2 2h9v11H3z" /></svg>
             </button>
             <button class="icon-sm" aria-label="Refresh folder" onclick={() => editor.refreshFolder()}>
@@ -616,21 +622,9 @@
       top: 48px;
     }
   }
-  .mark {
+  .presets .mark {
     float: right;
-    font-size: 0.7rem;
-    font-weight: 600;
-    padding: 0 5px;
-    border-radius: 3px;
     margin-right: 4px;
-  }
-  .mark.modified {
-    background: #b8860b;
-    color: #111;
-  }
-  .mark.new {
-    background: #3a7bd5;
-    color: #fff;
   }
   .unused {
     opacity: 0.5;

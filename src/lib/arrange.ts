@@ -5,7 +5,7 @@ import { model } from './catalog';
 import { sha256Hex } from './firmware';
 import { EXP_PARAMS } from './protocol/exp';
 import { moToPreset, presetToMo, type MoFile } from './protocol/mo';
-import { encodePreset, PRESET_COUNT, type Preset } from './protocol/preset';
+import { encodePreset, paddedLabel, PRESET_COUNT, presetLabel, type Preset } from './protocol/preset';
 
 export type Layout = (Preset | null)[];
 
@@ -27,17 +27,33 @@ export function canonical(p: Preset): Preset {
   return { ...p, modules, exp };
 }
 
+/**
+ * The bytes a preset compares by: as the pedal would store it, in no particular slot. Cached per preset object, so
+ * comparing a layout with the pedal after an edit encodes only the presets that changed. This relies on presets being
+ * values: every change makes a new object (the Arrange dialog keeps plain, unproxied layouts; the store replaces
+ * presets instead of changing them in place).
+ */
+const compareBytes = new WeakMap<Preset, Uint8Array>();
+function bytesOf(p: Preset): Uint8Array {
+  let b = compareBytes.get(p);
+  if (!b) compareBytes.set(p, (b = encodePreset({ ...canonical(p), index: 1 })));
+  return b;
+}
+
 /** Same content (name, modules, EXP) as the pedal would store it, regardless of the slot it came from. */
 export function samePreset(a: Preset | null | undefined, b: Preset | null | undefined): boolean {
   if (!a || !b) return a === b;
-  const x = encodePreset({ ...canonical(a), index: 1 });
-  const y = encodePreset({ ...canonical(b), index: 1 });
+  if (a === b) return true;
+  const x = bytesOf(a);
+  const y = bytesOf(b);
   return x.every((v, i) => v === y[i]);
 }
 
 // ---- compared with the original --------------------------------------------------------------------------------
 
-export const presetName = (p: Preset) => p.name.replace(/\0+$/, '').trim();
+/** A name as shown and compared: without the padding (NULs, spaces) of the 16 stored bytes. */
+export const trimName = (s: string) => s.replace(/\0+$/, '').trim();
+export const presetName = (p: Preset) => trimName(p.name);
 
 /**
  * Same sound: each module's switch and model, the values its model uses, and the EXP settings. Values a model does
@@ -100,15 +116,39 @@ export function copyName(p: Preset, layout: Layout): string {
 export type Origin = 'original' | 'modified' | 'new' | 'empty';
 
 /**
- * How a preset relates to the original set, by name only: a name the original does not have is new (a renamed
- * original included); a known name with another sound is modified.
+ * How presets relate to the original set, by name only: a name the original does not have is new (a renamed
+ * original included); a known name with another sound is modified. Without an original only empty slots are told
+ * apart (null otherwise). The names are indexed once per original.
  */
-export function originOf(p: Preset, original: Layout): Origin {
-  if (isEmptyPreset(p)) return 'empty';
-  const name = presetName(p);
-  const same = original.filter((o): o is Preset => !!o && presetName(o) === name);
-  if (!same.length) return 'new';
-  return same.some((o) => sameSound(o, p)) ? 'original' : 'modified';
+export function originsFrom(original: Layout | null): (p: Preset | null | undefined) => Origin | null {
+  const byName = new Map<string, Preset[]>();
+  for (const o of original ?? []) {
+    if (!o) continue;
+    const name = presetName(o);
+    const list = byName.get(name);
+    if (list) list.push(o);
+    else byName.set(name, [o]);
+  }
+  return (p) => {
+    if (!p) return null;
+    if (isEmptyPreset(p)) return 'empty';
+    if (!original) return null;
+    const same = byName.get(presetName(p));
+    if (!same) return 'new';
+    return same.some((o) => sameSound(o, p)) ? 'original' : 'modified';
+  };
+}
+
+/** A preset waiting for a slot, and the file (or slot) it came from. */
+export type TrayItem = { file: string; preset: Preset };
+
+/** Put a waiting preset (from the tray) into a slot; the preset it replaces goes to the tray, so nothing is lost. */
+export function placeFromTray(layout: Layout, tray: TrayItem[], item: number, slot: number): { layout: Layout; tray: TrayItem[] } {
+  const next = [...layout];
+  const out = next[slot];
+  next[slot] = atSlot(tray[item].preset, slot + 1);
+  const rest = tray.filter((_, k) => k !== item);
+  return { layout: next, tray: out ? [...rest, { file: `from ${presetLabel(slot + 1)}`, preset: out }] : rest };
 }
 
 /** Exchange two slots (0-based positions). Nothing is lost: each preset ends up in the other's place. */
@@ -134,7 +174,6 @@ export function changedSlots(pedal: (Preset | undefined | null)[], target: Layou
   return out;
 }
 
-const cleanName = (s: string) => s.replace(/\0+$/, '').trim();
 
 /** "01A " at the start of a file name: the slot it was exported from (see layoutToMoFiles). */
 export function slotOfFile(file: string): number | null {
@@ -150,7 +189,7 @@ export function layoutToMoFiles(layout: Layout): { filename: string; json: strin
   layout.forEach((p, i) => {
     if (!p) return;
     const safe = presetName(p).replace(/[\\/:*?"<>|\u0000-\u001f]/g, '_') || 'preset';
-    const label = `${String(Math.floor(i / BANK_SIZE) + 1).padStart(2, '0')}${'ABCD'[i % BANK_SIZE]}`;
+    const label = paddedLabel(i + 1);
     out.push({ filename: `${label} ${safe}.mo`, json: JSON.stringify(presetToMo(atSlot(p, i + 1)), null, 4) });
   });
   return out;
@@ -186,12 +225,14 @@ export async function moSet(
   created = new Date().toISOString(),
 ): Promise<{ filename: string; json: string }[]> {
   const files = layoutToMoFiles(layout);
-  const presets = [];
-  for (const f of files) {
-    const slot = f.filename.slice(0, 3);
-    const p = layout[slotOfFile(f.filename)! - 1]!;
-    presets.push({ slot, file: f.filename, name: presetName(p), sha256: await sha256Hex(encoder.encode(f.json)) });
-  }
+  const presets = await Promise.all(
+    files.map(async (f) => ({
+      slot: f.filename.slice(0, 3),
+      file: f.filename,
+      name: presetName(layout[slotOfFile(f.filename)! - 1]!),
+      sha256: await sha256Hex(encoder.encode(f.json)),
+    })),
+  );
   const manifest: SetManifest = { format: MANIFEST_FORMAT, version: 1, ...info, created, presets };
   return [...files, { filename: MANIFEST_FILE, json: JSON.stringify(manifest, null, 2) + '\n' }];
 }
@@ -227,15 +268,14 @@ export async function placeByManifest(
 }
 
 /**
- * Place .mo files into slots: a file named "01A …" goes to that slot; any other file goes where the pedal (`reference`, its current names) has a preset of the same name.
- * A name the pedal shows in several slots fills all of them. `hints` places known originals by slot (1-based) where
- * the pedal's name has changed since. Files no slot takes are returned as `unplaced`.
+ * Place .mo files into slots: a file named "01A …" goes to that slot; any other file goes where `reference` (names by
+ * slot) has a preset of the same name. A name shown in several slots fills all of them. Files no slot takes are
+ * returned as `unplaced`.
  */
 export function placeByName(
   files: { file: string; mo: MoFile }[],
   reference: (string | undefined)[],
-  hints: Record<number, string> = {},
-): { layout: Layout; unplaced: { file: string; preset: Preset }[] } {
+): { layout: Layout; unplaced: TrayItem[] } {
   const layout: Layout = Array(PRESET_COUNT).fill(null);
   const bySlot = new Set<number>();
   const rest: typeof files = [];
@@ -247,11 +287,11 @@ export function placeByName(
     } else rest.push(f);
   }
   const byName = new Map<string, { file: string; preset: Preset }>();
-  for (const f of rest) byName.set(cleanName(f.mo.fileInfo?.preset_name ?? f.file), { file: f.file, preset: moToPreset(f.mo, 1) });
+  for (const f of rest) byName.set(trimName(f.mo.fileInfo?.preset_name ?? f.file), { file: f.file, preset: moToPreset(f.mo, 1) });
   const used = new Set<string>();
   Array.from({ length: PRESET_COUNT }, (_, i) => {
     if (bySlot.has(i + 1)) return;
-    const name = hints[i + 1] ?? cleanName(reference[i] ?? '');
+    const name = trimName(reference[i] ?? '');
     const hit = byName.get(name);
     if (!hit) return;
     used.add(name);

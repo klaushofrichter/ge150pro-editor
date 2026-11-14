@@ -27,3 +27,8 @@ button:disabled { opacity: 0.45; }
 ::-webkit-scrollbar { width: 8px; height: 8px; }
 ::-webkit-scrollbar-thumb { background: #6b6c70; border-radius: 4px; }
 ::-webkit-scrollbar-track { background: transparent; }
+
+/* M and N marks: a preset compared with the original set (the preset list and the Arrange dialog) */
+.mark { font-size: 0.7rem; font-weight: 600; padding: 0 5px; border-radius: 3px; }
+.mark.modified { background: #b8860b; color: #111; }
+.mark.new { background: #3a7bd5; color: #fff; }

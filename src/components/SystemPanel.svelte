@@ -1,5 +1,6 @@
 <script lang="ts">
   import { editor } from '../lib/store.svelte';
+  import { downloadText } from '../lib/files';
   import { BRIGHTNESS_MAX, GLOBAL_EQ_PARAMS, LEVEL_LABELS, eqRawMax, formatEq } from '../lib/protocol/system';
   import Dialog from './Dialog.svelte';
   import SliderRow from './SliderRow.svelte';
@@ -19,10 +20,7 @@
 
   function exportBackup() {
     const out = editor.exportBackup();
-    if (!out) return;
-    const url = URL.createObjectURL(new Blob([out.json], { type: 'application/json' }));
-    Object.assign(document.createElement('a'), { href: url, download: out.filename }).click();
-    URL.revokeObjectURL(url);
+    if (out) downloadText(out.filename, out.json);
   }
 
   const levels = [

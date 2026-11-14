@@ -136,10 +136,8 @@ export class GE150Pro {
     this.emit('message', m, 'in');
     const p = m.payload;
     if (m.cmd === Cmd.PRESET_DUMP) this.emit('preset', decodePreset(p));
-    else if (m.cmd === Cmd.PRESET_CHANGED || m.cmd === Cmd.STORE_ACK) {
-      if (m.cmd === Cmd.STORE_ACK) this.emit('stored', p[0]);
-      else this.emit('current', p[0]);
-    } else if (m.cmd === Cmd.CURRENT_PRESET) this.emit('current', p[0]);
+    else if (m.cmd === Cmd.STORE_ACK) this.emit('stored', p[0]);
+    else if (m.cmd === Cmd.PRESET_CHANGED || m.cmd === Cmd.CURRENT_PRESET) this.emit('current', p[0]);
     else if (isModuleReport(m.cmd)) this.emit('module', m.cmd - Cmd.MODULE_BASE, decodeModule(p));
     else if (m.cmd === sys.SysCmd.SYSTEM) this.emit('system', sys.decodeSystem(p));
     else if (m.cmd === ExpCmd.FUNCTION || m.cmd === ExpCmd.VOLUME) {
@@ -149,8 +147,8 @@ export class GE150Pro {
     else if ((sys.SYSTEM_CHANGE_CMDS as readonly number[]).includes(m.cmd)) {
       const patch = sys.decodeSystemChange(m.cmd, p);
       if (patch) this.emit('systemChange', patch);
-    } else if (m.cmd === sys.SysCmd.GLOBAL_EQ || m.cmd === 0x51) this.emit('globalEq', sys.decodeGlobalEq(p));
-    else if (m.cmd === sys.SysCmd.SPILL_OVER || m.cmd === 0x52) this.emit('spillOver', sys.decodeSpillOver(p));
+    } else if (m.cmd === sys.SysCmd.GLOBAL_EQ || m.cmd === sys.SysCmd.GLOBAL_EQ_CHANGED) this.emit('globalEq', sys.decodeGlobalEq(p));
+    else if (m.cmd === sys.SysCmd.SPILL_OVER || m.cmd === sys.SysCmd.SPILL_OVER_CHANGED) this.emit('spillOver', sys.decodeSpillOver(p));
   }
 
   setInputLevel(raw: number) {

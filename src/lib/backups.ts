@@ -48,17 +48,46 @@ export async function listBackups(): Promise<Backup[]> {
   return all.sort((a, b) => (a.id === ORIGINAL_ID ? -1 : b.id === ORIGINAL_ID ? 1 : b.created.localeCompare(a.created)));
 }
 
+/** In one read-write transaction: refuse if the backup `id` is locked, else run `write`. */
+async function unlessLocked(id: string, verb: string, write: (s: IDBObjectStore) => void): Promise<void> {
+  const db = await open();
+  try {
+    await new Promise<void>((resolve, reject) => {
+      const tx = db.transaction(STORE, 'readwrite');
+      const store = tx.objectStore(STORE);
+      let refused: Error | null = null;
+      const get = store.get(id);
+      get.onsuccess = () => {
+        const existing = get.result as Backup | undefined;
+        if (existing?.locked) {
+          refused = new Error(`"${existing.name}" is locked and cannot be ${verb}`);
+          tx.abort();
+          return;
+        }
+        try {
+          write(store);
+        } catch (e) {
+          refused = e instanceof Error ? e : new Error(String(e)); // e.g. a value IndexedDB cannot store
+          tx.abort();
+        }
+      };
+      tx.oncomplete = () => resolve();
+      tx.onabort = () => reject(refused ?? tx.error);
+      tx.onerror = () => reject(refused ?? tx.error);
+    });
+  } finally {
+    db.close();
+  }
+}
+
 /** Save a new backup. A locked backup with the same id is never replaced. */
 export async function saveBackup(b: Omit<Backup, 'id' | 'created'> & { id?: string; created?: string }): Promise<Backup> {
   const backup: Backup = { ...b, id: b.id ?? crypto.randomUUID(), created: b.created ?? new Date().toISOString() };
-  const existing = await run<Backup | undefined>('readonly', (s) => s.get(backup.id) as IDBRequest<Backup | undefined>);
-  if (existing?.locked) throw new Error(`"${existing.name}" is locked and cannot be replaced`);
-  await run('readwrite', (s) => s.put(JSON.parse(JSON.stringify(backup))));
+  // a plain copy: callers may pass Svelte state proxies, which IndexedDB cannot clone
+  await unlessLocked(backup.id, 'replaced', (s) => s.put(JSON.parse(JSON.stringify(backup))));
   return backup;
 }
 
 export async function deleteBackup(id: string): Promise<void> {
-  const existing = await run<Backup | undefined>('readonly', (s) => s.get(id) as IDBRequest<Backup | undefined>);
-  if (existing?.locked) throw new Error(`"${existing.name}" is locked and cannot be deleted`);
-  await run('readwrite', (s) => s.delete(id));
+  await unlessLocked(id, 'deleted', (s) => s.delete(id));
 }
