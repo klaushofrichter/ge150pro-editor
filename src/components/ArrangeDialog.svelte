@@ -320,11 +320,13 @@
   async function write() {
     confirming = false;
     await editor.writeLayout($state.snapshot(layout) as Layout);
+    await refresh();
+    // after a failed or stopped write the arrangement stays (what is left to write shows as changes, Undo works)
+    if (editor.writing?.phase !== 'done') return;
     layout = editor.pedalLayout();
     history = [];
     tray = [];
     showing = 'the pedal';
-    await refresh();
   }
 
   const label = (i: number) => presetLabel(i + 1);

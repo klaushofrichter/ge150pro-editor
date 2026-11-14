@@ -73,6 +73,7 @@ class EditorState {
   }
 
   private setPreset(index: number, p: Preset) {
+    if (!Number.isInteger(index) || index < 1 || index > PRESET_COUNT) return; // not a slot (a malformed report)
     this.presets = this.presets.with(index - 1, p);
   }
 
@@ -87,6 +88,7 @@ class EditorState {
       const dev = reuse ? await GE150Pro.previouslyGranted() : await GE150Pro.request();
       if (!dev) {
         this.status = 'disconnected';
+        this.settleReady(new Error('no pedal found'));
         return;
       }
       this.wire(dev);
@@ -129,7 +131,7 @@ class EditorState {
   private wire(dev: GE150Pro) {
     dev.on('preset', (p) => {
       this.setPreset(p.index, p);
-      if (p.index === this.current && !this.dirty) this.live = structuredClone($state.snapshot(p));
+      if (p.index === this.current && !this.dirty) this.live = structuredClone(p);
       if (this.loaded === PRESET_COUNT && this.status === 'loading') {
         this.status = 'ready';
         this.settleReady();
@@ -159,7 +161,7 @@ class EditorState {
     });
     dev.on('stored', (index) => {
       if (this.live && this.live.index === index) {
-        this.setPreset(index, structuredClone($state.snapshot(this.live)) as Preset);
+        this.setPreset(index, $state.snapshot(this.live) as Preset);
         this.dirty = false;
       }
     });
@@ -196,8 +198,10 @@ class EditorState {
   async select(index: number) {
     if (!this.online) return;
     this.dropPendingSends();
-    await this.device?.selectPreset(index);
+    // the editor switches first, so edits made while the pedal loads the preset (SELECT_SETTLE_MS) belong to the new
+    // preset, which is where the device queue delivers them
     this.adoptCurrent(index);
+    await this.device?.selectPreset(index);
   }
 
   /** Real-time edit: update local state now, send at most once per interval per slot. */
@@ -298,7 +302,9 @@ class EditorState {
   /** Forget sends still waiting in the throttle (another preset, a revert, a disconnect). */
   private dropPendingSends() {
     this.pendingSends.clear();
+    this.sendGeneration++;
   }
+  private sendGeneration = 0;
 
   /** Send immediately, then at most once per interval with the latest value. */
   private throttled(key: string, send: () => void) {
@@ -308,7 +314,9 @@ class EditorState {
     }
     send();
     this.pendingSends.set(key, null);
+    const generation = this.sendGeneration;
     const tick = () => {
+      if (generation !== this.sendGeneration) return; // dropped (dropPendingSends): this chain ends
       const next = this.pendingSends.get(key);
       if (next) {
         this.pendingSends.set(key, null);
@@ -389,8 +397,11 @@ class EditorState {
         this.setPreset(i, p);
         written.push(i);
       }
-      if (this.device) await this.device.selectPreset(back);
-      this.adoptCurrent(back);
+      if (back >= 1) {
+        // back to the preset that was selected before the write
+        if (this.device) await this.device.selectPreset(back);
+        this.adoptCurrent(back);
+      }
       const cancelled = this.stopWriting;
       this.writing = { phase: 'verifying', done: written.length, total };
       const wrong = await this.verify(target, written);
@@ -475,11 +486,15 @@ class EditorState {
   whenReady(timeoutMs: number): Promise<void> {
     if (this.status === 'ready') return Promise.resolve();
     return new Promise((resolve, reject) => {
-      const timer = setTimeout(() => this.settleReady(new Error(`not loaded within ${timeoutMs / 1000} s`)), timeoutMs);
-      this.readyWaiters.push({
+      const waiter = {
         resolve: () => (clearTimeout(timer), resolve()),
-        reject: (e) => (clearTimeout(timer), reject(e)),
-      });
+        reject: (e: Error) => (clearTimeout(timer), reject(e)),
+      };
+      const timer = setTimeout(() => {
+        this.readyWaiters = this.readyWaiters.filter((w) => w !== waiter); // only this waiter times out
+        reject(new Error(`not loaded within ${timeoutMs / 1000} s`));
+      }, timeoutMs);
+      this.readyWaiters.push(waiter);
     });
   }
 

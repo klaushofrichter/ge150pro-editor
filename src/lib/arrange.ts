@@ -108,7 +108,7 @@ export function copyName(p: Preset, layout: Layout): string {
   const used = new Set(layout.filter(Boolean).map((x) => presetName(x!)));
   for (let n = 2; ; n++) {
     const suffix = ` ${n}`;
-    const name = base.slice(0, 16 - suffix.length).trimEnd() + suffix;
+    const name = base.slice(0, NAME_LENGTH - suffix.length).trimEnd() + suffix;
     if (!used.has(name)) return name;
   }
 }
@@ -193,7 +193,7 @@ export function layoutToMoFiles(layout: Layout): { filename: string; json: strin
   const out: { filename: string; json: string }[] = [];
   layout.forEach((p, i) => {
     if (!p) return;
-    const safe = presetName(p).replace(/[\\/:*?"<>|\u0000-\u001f]/g, '_') || 'preset';
+    const safe = safeFileName(presetName(p)) || 'preset';
     const label = paddedLabel(i + 1);
     out.push({ filename: `${label} ${safe}.mo`, json: JSON.stringify(presetToMo(atSlot(p, i + 1)), null, 4) });
   });
@@ -320,9 +320,12 @@ export interface BackupFile {
   [extra: string]: unknown;
 }
 
-/** "GE150PRO <name> 2026-11-14-10-15.json": the file name of a backup file. */
+/** A name usable as a file name everywhere: characters file systems refuse become "_". */
+const safeFileName = (name: string) => name.replace(/[\\/:*?"<>|\u0000-\u001f]/g, '_');
+
+/** "GE150PRO <name> 2026-11-14-10-15-42.json": the file name of a backup file. */
 export function backupFileName(name: string, created: string): string {
-  return `GE150PRO ${name.replace(/[\\/:*?"<>|]/g, '_')} ${created.slice(0, 16).replace(/[:T]/g, '-')}.json`;
+  return `GE150PRO ${safeFileName(name)} ${created.slice(0, 19).replace(/[:T]/g, '-')}.json`;
 }
 
 export function layoutToFile(layout: Layout, name: string, created = new Date().toISOString()): BackupFile {
