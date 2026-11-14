@@ -3,6 +3,16 @@ import { expect, test } from '@playwright/test';
 // The README's screenshots, from the demo (made-up presets): npm run screenshots
 const out = (name: string) => `docs/screenshots/${name}.png`;
 
+test.beforeEach(async ({ page }, info) => {
+  if (info.title !== 'welcome') await page.addInitScript(() => localStorage.setItem('ge150pro-editor.welcome-confirmed', 'screenshots'));
+});
+
+test('welcome', async ({ page }) => {
+  await page.goto('./');
+  await expect(page.getByRole('dialog', { name: 'GE150 Pro Editor' })).toBeVisible();
+  await page.screenshot({ path: out('welcome') });
+});
+
 test('editor', async ({ page }) => {
   await page.goto('./?demo');
   await page.locator('.presets li button', { hasText: '04D' }).click();

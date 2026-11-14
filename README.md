@@ -68,6 +68,12 @@ read-only.
 
 ## Good to know
 
+- On the first visit a panel explains what the editor is, how to get the factory presets in, and that you use it at
+  your own risk; it stays away once confirmed (remembered in the browser) and can be read again from the tools panel
+  (**About and factory presets**).
+
+  <img src="docs/screenshots/welcome.png" alt="The first-visit panel" width="600">
+
 - The first **Connect device** asks Chrome for permission to use the pedal; the page connects by itself afterwards.
 - Changes to effects are live on the pedal but not stored until you save the preset (the disk icon). Arrangements are
   written only with **Write … to the pedal**, which always asks first.
@@ -87,7 +93,8 @@ npm run e2e           # browser tests on the built app (demo mode)
 npm run screenshots   # renders docs/screenshots/
 ```
 
-Node 26 (`.nvmrc`). Branches: work on a feature branch, open a pull request to `main`; a release is a pull request
+Node 26 (`.nvmrc`). Type checking uses TypeScript 7 (`@typescript/native`, through `svelte-check --tsgo`); TypeScript 6
+is installed as `typescript` because svelte-check still needs it. Branches: work on a feature branch, open a pull request to `main`; a release is a pull request
 from `main` to `production`. `production` is protected (the `test`, `e2e` and `codeql` checks must pass), and every
 push to it publishes the app on GitHub Pages with a calendar version (`YYYY.MM.DD.N`, shown in the tools panel and as
 a GitHub release).
