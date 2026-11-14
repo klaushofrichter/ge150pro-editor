@@ -23,12 +23,10 @@
 
 <script lang="ts">
   import { onMount } from 'svelte';
-  import { termsHtml } from '../lib/terms';
 
   /** `accepted`: opened again from the About button, so it can simply be closed. */
   let { onconfirm, accepted = false }: { onconfirm: () => void; accepted?: boolean } = $props();
   let button: HTMLButtonElement | undefined = $state();
-  let showTerms = $state(false);
 
   const REPO = 'https://github.com/klaushofrichter/ge150pro-editor';
   const PRODUCT = 'https://www.mooeraudio.com/products/207.html';
@@ -61,17 +59,28 @@
   </p>
 
   <h3>The factory presets</h3>
-  <p>The editor can read Mooer's original 200 presets from Mooer's firmware file and keep them as a locked original to compare with and restore from:</p>
+  <p>
+    The editor can keep Mooer's 200 original presets as a locked copy, to compare your presets with and to restore
+    from. They come with Mooer's own editor download:
+  </p>
   <ol>
-    <li>Download the GE150 Pro package from <a href={DOWNLOADS} target="_blank" rel="noopener">Mooer's download page</a>.</li>
     <li>
-      Find the firmware file (<code>GE150PRO_V2.1.x.mr</code>) inside it. On a Mac: open the <code>.dmg</code>,
-      right-click <code>GE150PRO.app</code>, <em>Show Package Contents</em>, then <code>Contents/MacOS/Firmware</code>.
-      On Windows: in the folder where Mooer's editor is installed.
+      On <a href={DOWNLOADS} target="_blank" rel="noopener">Mooer's download page</a>, download the GE150 Pro package
+      <strong>for Mac</strong> (a <code>.zip</code>, for example <code>ge150_pro_v2.1.4_mac.zip</code>). It works on any
+      computer: nothing gets installed, the editor only reads the file.
     </li>
-    <li>Here: <strong>Arrange and back up presets</strong>, then <strong>Read the factory presets from a firmware file (.mr)</strong>.</li>
+    <li>
+      Here, click the grid icon next to <strong>PRESET</strong> (Arrange and back up presets). In the
+      <strong>Backups</strong> column on the right, click <strong>Read the factory presets from Mooer's download</strong>
+      and choose the <code>.zip</code> you downloaded.
+    </li>
+    <li>
+      <strong>🔒 Factory presets</strong> appears at the top of the backups; click <strong>Show</strong> to see them in
+      the grid. Your presets are now marked M (changed) or N (not in the factory set). To put factory presets back on
+      the pedal, arrange them and use <strong>Write … to the pedal</strong>.
+    </li>
   </ol>
-  <p class="muted">The file is only read. Nothing is installed on the pedal.</p>
+  <p class="muted">Already have Mooer's editor installed? Its firmware file (<code>GE150PRO_V2.1.x.mr</code>) works too.</p>
 
   <h3>Use at your own risk</h3>
   <p class="risk">
@@ -81,18 +90,10 @@
     replaces what is stored on the pedal, so keep backups.
   </p>
 
-  <h3>Terms of use</h3>
   <p>
-    Using this app means you agree to its terms of use: you use it at your own risk, there is no warranty, no liability
-    and no support, and your data stays in your browser.
-    <button class="link" aria-expanded={showTerms} onclick={() => (showTerms = !showTerms)}>{showTerms ? 'Hide' : 'Read'} the terms of use</button>
+    Using this app means you agree to its <a href="./terms.html" target="_blank" rel="noopener">terms of use</a>: at
+    your own risk, without warranty, liability or support; your data stays in your browser.
   </p>
-  {#if showTerms}
-    <div class="terms" role="region" aria-label="Terms of use">
-      <!-- the app's own TERMS.md, escaped in termsHtml() -->
-      {@html termsHtml()}
-    </div>
-  {/if}
 
   <p class="muted">Source code: <a href={REPO} target="_blank" rel="noopener">github.com/klaushofrichter/ge150pro-editor</a></p>
 
@@ -100,7 +101,7 @@
     {#if accepted}
       <button bind:this={button} class="confirm" onclick={onconfirm}>Close</button>
     {:else}
-      <button bind:this={button} class="confirm" onclick={confirm}>I agree to the terms and accept the risk</button>
+      <button bind:this={button} class="confirm" onclick={confirm}>I agree to the terms of use and accept the risk</button>
     {/if}
   </div>
 </div>
@@ -161,34 +162,6 @@
   .risk {
     border-left: 3px solid var(--accent);
     padding-left: 10px;
-  }
-  .link {
-    background: none;
-    border: none;
-    padding: 0;
-    color: var(--accent);
-    text-decoration: underline;
-    font: inherit;
-    cursor: pointer;
-  }
-  .terms {
-    background: var(--well);
-    border-radius: 4px;
-    padding: 4px 14px;
-    margin: 8px 0;
-    font-size: 0.88rem;
-    max-height: 40vh;
-    overflow-y: auto;
-  }
-  .terms :global(h4) {
-    margin: 12px 0 2px;
-    font-weight: 600;
-  }
-  .terms :global(a) {
-    color: var(--accent);
-  }
-  .terms :global(p) {
-    margin: 4px 0;
   }
   .actions {
     display: flex;

@@ -112,10 +112,12 @@ USB-MIDI: it is controlled on the pedal only.
 ## Factory presets in the firmware
 
 The firmware image (`.mr`) holds the 200 factory presets in factory slot order: 200 names of 16 bytes, followed by
-200 bodies of 228 bytes (a preset body without index and name). In V2.1.2 the names start at file offset `0x3858a`,
-in V2.1.4 at `0x385be`; both tables are identical. The editor reads them only from these two images, recognized by
-their SHA-256 (`KNOWN_FIRMWARE` in `src/lib/arrange.ts`). REVERB `v4` (the SHIMMER parameter) is 0 in the table and
-65 on a pedal holding the factory preset, so the editor sets it to 65.
+200 bodies of 228 bytes (a preset body without index and name), 48,800 bytes in all. In V2.1.2 the table starts at
+file offset `0x3858a`, in V2.1.4 at `0x385be`; both tables are identical (SHA-256 `d7a4649f…94956`). The firmware is
+not offered on its own: it ships inside Mooer's editor package, for the Mac a `.zip` holding a `.dmg` (UDIF, zlib
+compressed) holding the editor app with the `.mr` in it. `src/lib/firmware.ts` reads the table from any of the three
+by its first two names and accepts it only if its SHA-256 matches. REVERB `v4` (the SHIMMER parameter) is 0 in the
+table and 65 on a pedal holding the factory preset, so the editor sets it to 65.
 
 ## Firmware
 

@@ -1,10 +1,11 @@
 #!/usr/bin/env node
-// Extract the 200 factory presets from a known GE150 Pro firmware image (.mr) as .mo files, "01A Name.mo" …
+// Extract the 200 factory presets from Mooer's download (the Mac package .zip, its .dmg, or the firmware .mr) as .mo
+// files, "01A Name.mo" …
 // "50D Name.mo", plus manifest.json (an immutable original: name, dates, firmware and its SHA-256, a checksum per file).
 // The folder must not exist yet; afterwards the files and the folder are read-only, so the set stays as extracted.
-// Only the images listed in src/lib/arrange.ts (KNOWN_FIRMWARE) are accepted.
+// Only the known factory table is accepted (src/lib/firmware.ts).
 //
-//   node scripts/extract-factory.mjs work/firmware/GE150PRO_V2.1.2.mr work/factory-mo-V2.1.2
+//   node scripts/extract-factory.mjs ge150_pro_v2.1.4_mac.zip factory-presets
 import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import { basename, join } from 'node:path';
@@ -12,7 +13,7 @@ import { createServer } from 'vite';
 
 const [fwPath, outDir] = process.argv.slice(2);
 if (!fwPath || !outDir) {
-  console.error('usage: node scripts/extract-factory.mjs <firmware.mr> <new folder>');
+  console.error("usage: node scripts/extract-factory.mjs <Mooer's .zip, .dmg or .mr> <new folder>");
   process.exit(2);
 }
 if (existsSync(outDir)) {
@@ -23,11 +24,12 @@ if (existsSync(outDir)) {
 // the app's own code (TypeScript), loaded through Vite
 const vite = await createServer({ server: { middlewareMode: true }, appType: 'custom', logLevel: 'error' });
 try {
-  const { factoryFromFirmware, moSet, KNOWN_FIRMWARE } = await vite.ssrLoadModule('/src/lib/arrange.ts');
+  const { moSet } = await vite.ssrLoadModule('/src/lib/arrange.ts');
+  const { factoryFromFile } = await vite.ssrLoadModule('/src/lib/firmware.ts');
   const fw = new Uint8Array(readFileSync(fwPath));
-  const got = await factoryFromFirmware(fw);
+  const got = await factoryFromFile(basename(fwPath), fw);
   if (!got) {
-    console.error(`${basename(fwPath)} is not a known firmware image (${KNOWN_FIRMWARE.map((k) => k.version).join(', ')})`);
+    console.error(`${basename(fwPath)}: the factory presets were not found (use Mooer's Mac package .zip, its .dmg, or the .mr)`);
     process.exit(1);
   }
   const sha = createHash('sha256').update(fw).digest('hex');
