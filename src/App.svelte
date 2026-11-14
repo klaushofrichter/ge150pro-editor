@@ -5,7 +5,7 @@
   import SystemPanel from './components/SystemPanel.svelte';
   import ExpPanel from './components/ExpPanel.svelte';
   import ArrangeDialog from './components/ArrangeDialog.svelte';
-  import WelcomeDialog, { welcomeConfirmed } from './components/WelcomeDialog.svelte';
+  import WelcomeDialog, { termsAccepted } from './components/WelcomeDialog.svelte';
   import Toggle from './components/Toggle.svelte';
   import { catalog } from './lib/catalog';
   import { GE150Pro } from './lib/device';
@@ -21,7 +21,13 @@
   let showExp = $state(false);
   let showArrange = $state(false);
   /** The first-visit panel: what this is, the factory presets, the risk. */
-  let showWelcome = $state(!welcomeConfirmed());
+  let showWelcome = $state(!termsAccepted());
+  /** Opened from the About button after the terms were accepted: a plain dialog. */
+  let welcomeAccepted = $state(false);
+  function showAbout() {
+    welcomeAccepted = termsAccepted();
+    showWelcome = true;
+  }
   let notice = $state('');
   const label = (i: number) => presetLabel(i).padStart(3, '0');
 
@@ -124,6 +130,9 @@
     {:else if editor.status === 'loading'}
       <span class="muted">Loading {editor.loaded}/{PRESET_COUNT}</span>
     {/if}
+    <button class="box icon" aria-label="About, factory presets and terms of use" title="About, factory presets and terms of use" onclick={showAbout}>
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9" /><path d="M12 11v6M12 7.5v.5" /></svg>
+    </button>
     <button class="box icon" aria-label="Tools and USB log" title="Tools and USB log" aria-expanded={showSettings} onclick={() => (showSettings = !showSettings)}>
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 6h16M4 12h16M4 18h16" /></svg>
     </button>
@@ -139,7 +148,7 @@
     <ExpPanel onclose={() => (showExp = false)} />
   {/if}
   {#if showWelcome}
-    <WelcomeDialog onconfirm={() => (showWelcome = false)} />
+    <WelcomeDialog accepted={welcomeAccepted} onconfirm={() => (showWelcome = false)} />
   {/if}
   {#if showArrange}
     <ArrangeDialog onclose={() => (showArrange = false)} />
@@ -150,7 +159,6 @@
       <div class="row">
         <span>Device: {editor.device?.name ?? 'not connected'}</span>
         <span class="muted">Editor {import.meta.env.VITE_APP_VERSION ?? 'development build'} · <a href="https://github.com/klaushofrichter/ge150pro-editor">source</a></span>
-        <button onclick={() => (showWelcome = true)}>About and factory presets</button>
         {#if editor.device}<button onclick={() => editor.disconnect()}>Disconnect</button>{/if}
         <button disabled={!editor.dirty} onclick={() => editor.revert()}>Revert unsaved changes</button>
         <button disabled={!editor.live} onclick={exportMo}>Export .mo</button>

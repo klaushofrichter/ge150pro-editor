@@ -1,10 +1,11 @@
 import { expect, test } from '@playwright/test';
+import { ACCEPTED_KEY, TERMS_VERSION } from './terms';
 
 // The README's screenshots, from the demo (made-up presets): npm run screenshots
 const out = (name: string) => `docs/screenshots/${name}.png`;
 
 test.beforeEach(async ({ page }, info) => {
-  if (info.title !== 'welcome') await page.addInitScript(() => localStorage.setItem('ge150pro-editor.welcome-confirmed', 'screenshots'));
+  if (info.title !== 'welcome') await page.addInitScript(([k, v]) => localStorage.setItem(k, v), [ACCEPTED_KEY, TERMS_VERSION]);
 });
 
 test('welcome', async ({ page }) => {

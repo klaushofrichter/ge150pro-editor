@@ -1,11 +1,12 @@
 <script lang="ts" module>
-  // Shown on the first visit and closed only by confirming. Confirming is remembered in this browser (localStorage);
-  // when storage is not available (some private windows) the panel simply shows again next time.
-  const KEY = 'ge150pro-editor.welcome-confirmed';
+  // Shown on the first visit, and again after the terms of use change; closed only by accepting them. The accepted
+  // terms version is remembered in this browser (localStorage); when storage is not available (some private windows)
+  // the panel simply shows again next time. Opened from the About button, it closes like any dialog.
+  import { ACCEPTED_KEY, TERMS_VERSION } from '../lib/terms';
 
-  export function welcomeConfirmed(): boolean {
+  export function termsAccepted(): boolean {
     try {
-      return localStorage.getItem(KEY) !== null;
+      return localStorage.getItem(ACCEPTED_KEY) === TERMS_VERSION;
     } catch {
       return false;
     }
@@ -13,7 +14,7 @@
 
   function remember() {
     try {
-      localStorage.setItem(KEY, new Date().toISOString());
+      localStorage.setItem(ACCEPTED_KEY, TERMS_VERSION);
     } catch {
       // not remembered: shown again next time
     }
@@ -22,9 +23,12 @@
 
 <script lang="ts">
   import { onMount } from 'svelte';
+  import { termsHtml } from '../lib/terms';
 
-  let { onconfirm }: { onconfirm: () => void } = $props();
+  /** `accepted`: opened again from the About button, so it can simply be closed. */
+  let { onconfirm, accepted = false }: { onconfirm: () => void; accepted?: boolean } = $props();
   let button: HTMLButtonElement | undefined = $state();
+  let showTerms = $state(false);
 
   const REPO = 'https://github.com/klaushofrichter/ge150pro-editor';
   const PRODUCT = 'https://www.mooeraudio.com/products/207.html';
@@ -38,7 +42,8 @@
   }
 </script>
 
-<div class="backdrop" role="presentation"></div>
+<svelte:window onkeydown={(e) => accepted && e.key === 'Escape' && onconfirm()} />
+<div class="backdrop" role="presentation" onclick={() => accepted && onconfirm()}></div>
 <div class="welcome" role="dialog" aria-modal="true" aria-labelledby="welcome-title" aria-describedby="welcome-what">
   <h2 id="welcome-title">GE150 Pro Editor</h2>
 
@@ -76,10 +81,27 @@
     replaces what is stored on the pedal, so keep backups.
   </p>
 
+  <h3>Terms of use</h3>
+  <p>
+    Using this app means you agree to its terms of use: you use it at your own risk, there is no warranty, no liability
+    and no support, and your data stays in your browser.
+    <button class="link" aria-expanded={showTerms} onclick={() => (showTerms = !showTerms)}>{showTerms ? 'Hide' : 'Read'} the terms of use</button>
+  </p>
+  {#if showTerms}
+    <div class="terms" role="region" aria-label="Terms of use">
+      <!-- the app's own TERMS.md, escaped in termsHtml() -->
+      {@html termsHtml()}
+    </div>
+  {/if}
+
   <p class="muted">Source code: <a href={REPO} target="_blank" rel="noopener">github.com/klaushofrichter/ge150pro-editor</a></p>
 
   <div class="actions">
-    <button bind:this={button} class="confirm" onclick={confirm}>I understand and accept the risk</button>
+    {#if accepted}
+      <button bind:this={button} class="confirm" onclick={onconfirm}>Close</button>
+    {:else}
+      <button bind:this={button} class="confirm" onclick={confirm}>I agree to the terms and accept the risk</button>
+    {/if}
   </div>
 </div>
 
@@ -139,6 +161,34 @@
   .risk {
     border-left: 3px solid var(--accent);
     padding-left: 10px;
+  }
+  .link {
+    background: none;
+    border: none;
+    padding: 0;
+    color: var(--accent);
+    text-decoration: underline;
+    font: inherit;
+    cursor: pointer;
+  }
+  .terms {
+    background: var(--well);
+    border-radius: 4px;
+    padding: 4px 14px;
+    margin: 8px 0;
+    font-size: 0.88rem;
+    max-height: 40vh;
+    overflow-y: auto;
+  }
+  .terms :global(h4) {
+    margin: 12px 0 2px;
+    font-weight: 600;
+  }
+  .terms :global(a) {
+    color: var(--accent);
+  }
+  .terms :global(p) {
+    margin: 4px 0;
   }
   .actions {
     display: flex;
