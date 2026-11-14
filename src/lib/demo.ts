@@ -1,7 +1,7 @@
 // Demo mode (?demo): 200 generated presets, so the editor can be tried without a pedal. Names and sounds are made up
 // here; every value is a valid raw value of its model (catalog ranges).
 import { catalog, rawRange } from './catalog';
-import { SLOT_COUNT, type ModuleState, type Preset } from './protocol/preset';
+import { PRESET_COUNT, SLOT_COUNT, type ModuleState, type Preset } from './protocol/preset';
 
 const KINDS = ['Clean', 'Crunch', 'Drive', 'Lead'] as const;
 
@@ -25,7 +25,7 @@ const ON: Record<(typeof KINDS)[number], number[]> = {
 };
 
 export function demoPresets(): Preset[] {
-  return Array.from({ length: 200 }, (_, i) => {
+  return Array.from({ length: PRESET_COUNT }, (_, i) => {
     const kind = KINDS[i % 4];
     const bank = Math.floor(i / 4) + 1;
     const r = rng(i * 7919 + 17);

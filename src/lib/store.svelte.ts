@@ -1,13 +1,13 @@
 // Application state shared by the UI components.
 import { GE150Pro } from './device';
-import { PRESET_COUNT, presetLabel, type ExpSettings, type ModuleState, type Preset } from './protocol/preset';
+import { NAME_LENGTH, PRESET_COUNT, presetLabel, type ExpSettings, type ModuleState, type Preset } from './protocol/preset';
 import { moToPreset, presetToMo, type MoFile } from './protocol/mo';
 import type { Message } from './protocol/frame';
 import type { GlobalEq, SystemSettings } from './protocol/system';
 import type { Rhythm } from './protocol/rhythm';
 import { runSelfTest, type CheckResult } from './selftest';
-import { atSlot, changedSlots, layoutToFile, originsFrom, samePreset, type Layout, type Origin } from './arrange';
-import { dirFiles, pickDirectory } from './files';
+import { atSlot, backupFileName, changedSlots, layoutToFile, originsFrom, samePreset, type Layout, type Origin } from './arrange';
+import { dirFiles, errorText, pickDirectory } from './files';
 import { listBackups, ORIGINAL_ID, saveBackup } from './backups';
 
 export interface WriteProgress {
@@ -22,6 +22,8 @@ export interface WriteProgress {
 const SEND_INTERVAL_MS = 40;
 
 export interface LogEntry {
+  /** Increasing per message: the list's key. */
+  seq: number;
   t: number;
   dir: 'in' | 'out';
   cmd: number;
@@ -32,7 +34,11 @@ class EditorState {
   device: GE150Pro | null = $state(null);
   status: 'disconnected' | 'connecting' | 'loading' | 'ready' | 'error' = $state('disconnected');
   error = $state('');
-  presets: (Preset | undefined)[] = $state(Array(PRESET_COUNT));
+  /**
+   * The presets on the pedal. Values, not editable state: a change replaces the array (setPreset), never a preset in
+   * place, so comparisons can cache by object (arrange.ts, samePreset) and copies keep identities.
+   */
+  presets: (Preset | undefined)[] = $state.raw(Array(PRESET_COUNT));
   current = $state(0);
   /** Live (possibly unsaved) state of the current preset. */
   live: Preset | null = $state(null);
@@ -45,7 +51,8 @@ class EditorState {
   selfTest: CheckResult[] | null = $state(null);
   /** Drum machine state as reported by the pedal (read-only). */
   rhythm: Rhythm | null = $state(null);
-  log: LogEntry[] = $state([]);
+  log: LogEntry[] = $state.raw([]);
+  private logSeq = 0;
   /** Module slot shown in the parameter panel (0 = FX/COMP … 8 = REVERB). */
   selectedSlot = $state(2);
   /** .mo files in the user-chosen local folder ("COMPUTER" panel). */
@@ -60,6 +67,16 @@ class EditorState {
   private origins = $state.raw(originsFrom(null));
   private stopWriting = false;
 
+  /** A pedal is connected, or the demo runs. */
+  get online() {
+    return !!this.device || this.demo;
+  }
+
+  private setPreset(index: number, p: Preset) {
+    if (!Number.isInteger(index) || index < 1 || index > PRESET_COUNT) return; // not a slot (a malformed report)
+    this.presets = this.presets.with(index - 1, p);
+  }
+
   get loaded() {
     return this.presets.filter(Boolean).length;
   }
@@ -71,6 +88,7 @@ class EditorState {
       const dev = reuse ? await GE150Pro.previouslyGranted() : await GE150Pro.request();
       if (!dev) {
         this.status = 'disconnected';
+        this.settleReady(new Error('no pedal found'));
         return;
       }
       this.wire(dev);
@@ -81,7 +99,7 @@ class EditorState {
       } catch (e) {
         this.device = null;
         throw new Error(
-          `Could not open the GE150 Pro (${e instanceof Error ? e.message : e}). It is probably in use by the official GE150PRO app or another browser tab; close that and connect again.`,
+          `Could not open the GE150 Pro (${errorText(e)}). It is probably in use by the official GE150PRO app or another browser tab; close that and connect again.`,
         );
       }
     } catch (e) {
@@ -98,7 +116,7 @@ class EditorState {
     this.setOriginal(structuredClone(presets));
     presets[5].modules[2] = { ...presets[5].modules[2], values: presets[5].modules[2].values.map((v, k) => (k === 0 ? Math.max(0, v - 7) : v)) };
     presets[9] = { ...presets[9], name: 'My Tone' };
-    presets.forEach((p, i) => (this.presets[i] = p));
+    this.presets = presets;
     this.status = 'ready';
     this.adoptCurrent(1);
   }
@@ -112,10 +130,11 @@ class EditorState {
 
   private wire(dev: GE150Pro) {
     dev.on('preset', (p) => {
-      this.presets[p.index - 1] = p;
-      if (p.index === this.current && !this.dirty) this.live = structuredClone($state.snapshot(p));
+      this.setPreset(p.index, p);
+      if (p.index === this.current && !this.dirty) this.live = structuredClone(p);
       if (this.loaded === PRESET_COUNT && this.status === 'loading') {
         this.status = 'ready';
+        this.settleReady();
         // The live-state answers to the connect sequence's B0 arrive before the preset dump has
         // finished, so ask again now that the stored copy exists to compare against.
         dev.requestCurrent();
@@ -142,17 +161,18 @@ class EditorState {
     });
     dev.on('stored', (index) => {
       if (this.live && this.live.index === index) {
-        this.presets[index - 1] = structuredClone($state.snapshot(this.live));
+        this.setPreset(index, $state.snapshot(this.live) as Preset);
         this.dirty = false;
       }
     });
     dev.on('message', (m: Message, dir) => {
       const bytes = [...m.payload.slice(0, 24)].map((b) => b.toString(16).padStart(2, '0')).join(' ');
-      this.log = [{ t: Date.now(), dir, cmd: m.cmd, bytes }, ...this.log].slice(0, 200);
+      this.log = [{ seq: ++this.logSeq, t: Date.now(), dir, cmd: m.cmd, bytes }, ...this.log.slice(0, 199)];
     });
     dev.on('disconnect', () => {
       this.device = null;
       this.status = 'disconnected';
+      this.settleReady(new Error('the pedal was disconnected'));
     });
     dev.on('error', (e) => this.fail(e));
   }
@@ -171,20 +191,22 @@ class EditorState {
     if (index !== this.current) this.dropPendingSends(); // edits of the preset left behind must not reach the new one
     this.current = index;
     const p = this.presets[index - 1];
-    this.live = p ? structuredClone($state.snapshot(p)) : null;
+    this.live = p ? structuredClone(p) : null;
     this.dirty = false;
   }
 
   async select(index: number) {
-    if (!this.device && !this.demo) return;
+    if (!this.online) return;
     this.dropPendingSends();
-    await this.device?.selectPreset(index);
+    // the editor switches first, so edits made while the pedal loads the preset (SELECT_SETTLE_MS) belong to the new
+    // preset, which is where the device queue delivers them
     this.adoptCurrent(index);
+    await this.device?.selectPreset(index);
   }
 
   /** Real-time edit: update local state now, send at most once per interval per slot. */
   editModule(slot: number, m: ModuleState) {
-    if (!this.live || (!this.device && !this.demo)) return;
+    if (!this.live || !this.online) return;
     this.live.modules[slot] = m;
     this.dirty = true;
     const send = $state.snapshot(m) as ModuleState;
@@ -206,7 +228,7 @@ class EditorState {
 
   /** Real-time EXP edit of the current preset (not stored until store()). */
   editExp(patch: Partial<ExpSettings>) {
-    if (!this.live || (!this.device && !this.demo)) return;
+    if (!this.live || !this.online) return;
     const exp = { ...this.live.exp, ...patch };
     this.live.exp = exp;
     this.dirty = true;
@@ -221,18 +243,17 @@ class EditorState {
 
   async store(name?: string) {
     if (!this.live || !this.device) return;
-    if (name !== undefined) this.live.name = name.slice(0, 16);
+    if (name !== undefined) this.live.name = name.slice(0, NAME_LENGTH);
     await this.device.storePreset($state.snapshot(this.live) as Preset);
   }
 
   async rename(name: string) {
     if (!this.live || !this.device) return;
-    const trimmed = name.slice(0, 16);
+    const trimmed = name.slice(0, NAME_LENGTH);
     await this.device.renamePreset(this.live.index, trimmed);
     this.live.name = trimmed;
     const stored = this.presets[this.live.index - 1];
-    // a new object, not a change in place: presets are compared by object (arrange.ts, samePreset)
-    if (stored) this.presets[this.live.index - 1] = { ...($state.snapshot(stored) as Preset), name: trimmed };
+    if (stored) this.setPreset(this.live.index, { ...stored, name: trimmed });
   }
 
   exportMo(): { filename: string; json: string } | null {
@@ -281,7 +302,9 @@ class EditorState {
   /** Forget sends still waiting in the throttle (another preset, a revert, a disconnect). */
   private dropPendingSends() {
     this.pendingSends.clear();
+    this.sendGeneration++;
   }
+  private sendGeneration = 0;
 
   /** Send immediately, then at most once per interval with the latest value. */
   private throttled(key: string, send: () => void) {
@@ -291,7 +314,9 @@ class EditorState {
     }
     send();
     this.pendingSends.set(key, null);
+    const generation = this.sendGeneration;
     const tick = () => {
+      if (generation !== this.sendGeneration) return; // dropped (dropPendingSends): this chain ends
       const next = this.pendingSends.get(key);
       if (next) {
         this.pendingSends.set(key, null);
@@ -306,14 +331,14 @@ class EditorState {
   exportBackup(): { filename: string; json: string } | null {
     if (this.loaded === 0) return null;
     const created = new Date().toISOString();
-    const stamp = created.slice(0, 19).replace(/[:T]/g, '-');
+    const name = 'Pedal and system settings';
     const data = {
-      ...layoutToFile(this.pedalLayout(), `GE150PRO backup ${stamp}`, created),
+      ...layoutToFile(this.pedalLayout(), name, created),
       system: $state.snapshot(this.system),
       globalEq: $state.snapshot(this.globalEq),
       spillOver: this.spillOver,
     };
-    return { filename: `GE150PRO-backup-${stamp}.json`, json: JSON.stringify(data, null, 1) };
+    return { filename: backupFileName(name, created), json: JSON.stringify(data, null, 1) };
   }
 
   async loadOriginal() {
@@ -343,7 +368,7 @@ class EditorState {
 
   /** What the pedal holds now, as a layout. */
   pedalLayout(): Layout {
-    return ($state.snapshot(this.presets) as (Preset | undefined)[]).map((p) => p ?? null);
+    return this.presets.map((p) => p ?? null);
   }
 
   /**
@@ -369,11 +394,14 @@ class EditorState {
         const p = atSlot(target[i - 1]!, i);
         if (this.device) await this.device.writePreset(p);
         else await new Promise((r) => setTimeout(r, 25)); // demo: no pedal
-        this.presets[i - 1] = p;
+        this.setPreset(i, p);
         written.push(i);
       }
-      if (this.device) await this.device.selectPreset(back);
-      this.adoptCurrent(back);
+      if (back >= 1) {
+        // back to the preset that was selected before the write
+        if (this.device) await this.device.selectPreset(back);
+        this.adoptCurrent(back);
+      }
       const cancelled = this.stopWriting;
       this.writing = { phase: 'verifying', done: written.length, total };
       const wrong = await this.verify(target, written);
@@ -385,7 +413,7 @@ class EditorState {
         detail: cancelled ? `Stopped after ${written.length} of ${total}; the backup holds the pedal as it was.` : `${written.length} presets written and read back.`,
       };
     } catch (e) {
-      this.writing = { phase: 'failed', done: written.length, total, detail: e instanceof Error ? e.message : String(e) };
+      this.writing = { phase: 'failed', done: written.length, total, detail: errorText(e) };
     }
   }
 
@@ -398,11 +426,12 @@ class EditorState {
     if (this.device) {
       await this.disconnect();
       this.presets = Array(PRESET_COUNT);
+      const loaded = this.whenReady(20000);
       await this.connect(true);
-      const end = Date.now() + 20000;
-      while (this.status !== 'ready') {
-        if (this.status === 'error' || Date.now() > end) throw new Error('could not read the presets back');
-        await new Promise((r) => setTimeout(r, 100));
+      try {
+        await loaded;
+      } catch (e) {
+        throw new Error(`could not read the presets back: ${errorText(e)}`);
       }
     }
     return written.filter((i) => !samePreset(this.presets[i - 1], target[i - 1])).map((i) => presetLabel(i));
@@ -450,9 +479,35 @@ class EditorState {
     }
   }
 
+  /** Who waits for all presets to load (whenReady). */
+  private readyWaiters: { resolve: () => void; reject: (e: Error) => void }[] = [];
+
+  /** Resolves once all presets have loaded; rejects on a failure, a disconnect or after `timeoutMs`. */
+  whenReady(timeoutMs: number): Promise<void> {
+    if (this.status === 'ready') return Promise.resolve();
+    return new Promise((resolve, reject) => {
+      const waiter = {
+        resolve: () => (clearTimeout(timer), resolve()),
+        reject: (e: Error) => (clearTimeout(timer), reject(e)),
+      };
+      const timer = setTimeout(() => {
+        this.readyWaiters = this.readyWaiters.filter((w) => w !== waiter); // only this waiter times out
+        reject(new Error(`not loaded within ${timeoutMs / 1000} s`));
+      }, timeoutMs);
+      this.readyWaiters.push(waiter);
+    });
+  }
+
+  private settleReady(error?: Error) {
+    const waiters = this.readyWaiters;
+    this.readyWaiters = [];
+    for (const w of waiters) error ? w.reject(error) : w.resolve();
+  }
+
   private fail(e: unknown) {
-    this.error = e instanceof Error ? e.message : String(e);
+    this.error = errorText(e);
     this.status = 'error';
+    this.settleReady(e instanceof Error ? e : new Error(this.error));
   }
 }
 
