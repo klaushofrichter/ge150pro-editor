@@ -2,9 +2,10 @@
 // A layout is 200 entries, slot 1 at position 0; an entry is the preset meant for that slot (its own `index` is
 // ignored until it is written) or null while a slot is still unfilled.
 import { model } from './catalog';
+import { sha256Hex } from './firmware';
 import { EXP_PARAMS } from './protocol/exp';
 import { moToPreset, presetToMo, type MoFile } from './protocol/mo';
-import { decodePreset, encodePreset, MODULE_BYTES, PRESET_BODY_BYTES, PRESET_COUNT, SLOT_COUNT, type Preset } from './protocol/preset';
+import { encodePreset, PRESET_COUNT, type Preset } from './protocol/preset';
 
 export type Layout = (Preset | null)[];
 
@@ -294,48 +295,6 @@ export function fileToLayout(data: unknown): { layout: Layout; name: string; cre
     layout[e.index - 1] = moToPreset(e.mo, e.index);
   }
   return { layout, name: f.name ?? '', created: f.created ?? '' };
-}
-
-// ---- the factory set in a firmware image ----------------------------------------------------------------------
-// The firmware (.mr, as Mooer ships it) holds the 200 factory presets: 200 names of 16 bytes, then 200 bodies of 228
-// bytes (the preset body without index and name: 9 modules, then the EXP settings), in factory slot order. Only the
-// images examined are read, at their known offsets (docs/protocol.md, Factory presets).
-
-export const KNOWN_FIRMWARE = [
-  { version: 'V2.1.2', sha256: '96c3963a2c06b1787337f5f3ba13f1360a80aad71ccc16d36546b3609ea61e09', names: 0x3858a },
-  { version: 'V2.1.4', sha256: '4ffd2b6aa7349444d7e4c3adc06d933f0e412282511a32675991f520994e522a', names: 0x385be },
-] as const;
-
-const FW_NAME = 16;
-const FW_BODY = SLOT_COUNT * MODULE_BYTES + 12; // 228
-
-export async function sha256Hex(b: Uint8Array): Promise<string> {
-  const d = new Uint8Array(await crypto.subtle.digest('SHA-256', b as Uint8Array<ArrayBuffer>));
-  return [...d].map((x) => x.toString(16).padStart(2, '0')).join('');
-}
-
-/**
- * The factory presets of a known firmware image, or null for any other file. Values the pedal corrects when it stores
- * a preset stay as the firmware has them (comparisons use canonical()). REVERB v4 (the SHIMMER parameter,
- * unused by the other models) is 0 in the table and 65 on a pedal holding the factory preset (all 179 factory-named
- * presets compared, 2026-11-14), so it is set as the pedal sets it.
- */
-export async function factoryFromFirmware(fw: Uint8Array): Promise<{ version: string; layout: Layout } | null> {
-  const hash = await sha256Hex(fw);
-  const known = KNOWN_FIRMWARE.find((k) => k.sha256 === hash);
-  if (!known) return null;
-  const bodies = known.names + PRESET_COUNT * FW_NAME;
-  const layout = Array.from({ length: PRESET_COUNT }, (_, i) => {
-    const body = new Uint8Array(PRESET_BODY_BYTES);
-    body[0] = i + 1;
-    body.set(fw.subarray(known.names + i * FW_NAME, known.names + (i + 1) * FW_NAME), 1);
-    body.set(fw.subarray(bodies + i * FW_BODY, bodies + (i + 1) * FW_BODY), 1 + FW_NAME);
-    const p = decodePreset(body);
-    const rev = p.modules[SLOT_COUNT - 1];
-    if (rev.values[4] === 0) rev.values[4] = 65;
-    return p;
-  });
-  return { version: known.version, layout };
 }
 
 export const isComplete = (layout: Layout) => layout.length === PRESET_COUNT && layout.every(Boolean);
