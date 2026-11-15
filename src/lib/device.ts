@@ -15,6 +15,8 @@ export const FILTER: HIDDeviceFilter = { vendorId: 0x0483, productId: 0x5703 };
 export const SELECT_SETTLE_MS = 300;
 
 export interface DeviceEvents {
+  /** The pedal itself switched to this preset (footswitch or knob; never reported for the editor's selections). */
+  switched: (index: number) => void;
   /** Presets received so far from the dump (1-based index). */
   preset: (p: Preset) => void;
   /** The device's current preset index (selection on the pedal or confirmation of ours). */
@@ -137,7 +139,11 @@ export class GE150Pro {
     const p = m.payload;
     if (m.cmd === Cmd.PRESET_DUMP) this.emit('preset', decodePreset(p));
     else if (m.cmd === Cmd.STORE_ACK) this.emit('stored', p[0]);
-    else if (m.cmd === Cmd.PRESET_CHANGED || m.cmd === Cmd.CURRENT_PRESET) this.emit('current', p[0]);
+    else if (m.cmd === Cmd.PRESET_CHANGED || m.cmd === Cmd.CURRENT_PRESET) {
+      // `16` comes only from the pedal's own selections (footswitches, knob), never from ours
+      if (m.cmd === Cmd.PRESET_CHANGED) this.emit('switched', p[0]);
+      this.emit('current', p[0]);
+    }
     else if (isModuleReport(m.cmd)) this.emit('module', m.cmd - Cmd.MODULE_BASE, decodeModule(p));
     else if (m.cmd === sys.SysCmd.SYSTEM) this.emit('system', sys.decodeSystem(p));
     else if (m.cmd === ExpCmd.FUNCTION || m.cmd === ExpCmd.VOLUME) {
