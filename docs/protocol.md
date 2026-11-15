@@ -102,6 +102,14 @@ Parameter ids per slot: FX 0–9 and 100, DS 10–12, AMP 13–18, CAB 19–20, 
 101–108, DLY 51–56, REV 57–60 and 109 (names in `src/lib/protocol/exp.ts`). Moving a connected expression pedal
 produces the controlled module's report (`02`–`0A`).
 
+The toe switch (a firm press at full toe-down) toggles the pedal between EXP mode (`FUN_SWITCH` 1, EXP LED lit) and
+volume mode (`FUN_SWITCH` 0, LED dark). Each press sends one `18` with the new `FUN_SWITCH`; holding the press does
+not toggle again. In volume mode moving the pedal sends nothing, so its position is not visible over USB. Observed on
+V2.1.2, 2026-11-14, after the pedal's EXP calibration (before calibrating, the toe switch did not trigger).
+
+The editor treats the mode and the pedal-moved value as playing, not as edits: they do not mark the preset as
+changed, and Store keeps the preset's own mode and value (`src/lib/exp.ts`).
+
 ## Drum machine
 
 `8C 01` asks for the state; `0C` reports it, also whenever it changes on the pedal: `ON, MODE, STYLE, VOLUME` (one

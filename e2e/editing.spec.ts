@@ -41,3 +41,22 @@ test('the terms page opens from the intro panel link and leads back to the edito
   await expect(terms.getByRole('heading', { name: 'Terms of use', level: 1 })).toBeVisible();
   await expect(terms.locator('main')).toContainText('You use it at your own risk');
 });
+
+test('the EXP box shows the pedal mode, and switching FUNCTION here is an edit of the preset', async ({ page }) => {
+  await page.goto('./?demo');
+  await preset(page, '01A').click(); // Clean 1: FUNCTION off, EXP VOL off
+  const chip = page.locator('.exp .chip');
+  await expect(chip).toHaveText('OFF');
+  await page.locator('.exp').click();
+  await page.locator('label[title="EXP volume"]').click();
+  await expect(chip).toHaveText('VOL');
+  await page.locator('label[title="EXP function"]').click();
+  await expect(chip).toHaveText('EXP');
+  await expect(page.locator('.pname')).toHaveText('Clean 1 *');
+});
+
+test('the tools panel has a Clear USB log button, disabled while the log is empty', async ({ page }) => {
+  await page.goto('./?demo');
+  await page.getByRole('button', { name: 'Tools and USB log' }).click();
+  await expect(page.getByRole('button', { name: 'Clear USB log' })).toBeDisabled();
+});

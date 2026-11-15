@@ -1,6 +1,6 @@
 <script lang="ts">
   import { editor } from '../lib/store.svelte';
-  import { catalog, formatValue, model, rawFraction } from '../lib/catalog';
+  import { catalog, expTarget, formatValue, rawFraction } from '../lib/catalog';
   import { EXP_MODULES, EXP_PARAMS, EXP_VOL_MAX } from '../lib/protocol/exp';
   import Dialog from './Dialog.svelte';
   import SliderRow from './SliderRow.svelte';
@@ -10,22 +10,13 @@
 
   const exp = $derived(editor.live?.exp);
 
-  /** Catalog spellings that differ from the EXP panel's. */
-  const ALIASES: Record<string, string> = { FEEDBACK: 'F.BACK' };
-  const norm = (n: string) => ALIASES[n.toUpperCase()] ?? n.toUpperCase();
-
   /** The controlled parameter in the current model and its live value (moves with the pedal). */
   const target = $derived.by(() => {
     const live = editor.live;
-    if (!exp || !live) return null;
-    const slot = exp.MODULE_CTRL;
-    const name = EXP_PARAMS[slot]?.find((p) => p.id === exp.PARA_CTRL)?.name;
-    const mod = live.modules[slot];
-    const m = mod && model(slot, mod.type);
-    if (!name || !m) return null;
-    const i = m.params.findIndex((p) => norm(p.name) === name);
-    if (i < 0) return { name, slotName: catalog.slots[slot].name, model: m.name, spec: null, raw: 0 };
-    return { name, slotName: catalog.slots[slot].name, model: m.name, spec: m.params[i], raw: mod.values[m.params[i].pos], on: mod.on };
+    const t = exp && live && expTarget(exp, live.modules);
+    if (!t || !live) return null;
+    const mod = live.modules[t.slot];
+    return { name: t.name, slotName: catalog.slots[t.slot].name, model: t.model.name, spec: t.spec, raw: t.spec ? mod.values[t.spec.pos] : 0, on: mod.on };
   });
 
   function pickModule(m: number) {
@@ -35,7 +26,7 @@
   }
 </script>
 
-<Dialog title="EXP" {onclose} footer="Changes apply to the current preset right away; save the preset to keep them. CALIBRATE is only available on the pedal.">
+<Dialog title="EXP" {onclose} footer="Changes apply to the current preset right away; save the preset to keep them. The toe switch and the pedal's position are not changes: saving keeps the preset's own mode and value. CALIBRATE is only available on the pedal.">
   {#if !exp}
     <p class="muted">Select a preset first.</p>
   {:else}
@@ -43,6 +34,9 @@
       <div class="inline">
         <h3>FUNCTION</h3>
         <Toggle checked={exp.FUN_SWITCH === 1} label="EXP function" onchange={(on) => editor.editExp({ FUN_SWITCH: on ? 1 : 0 })} />
+        {#if editor.expMode !== null && editor.expMode !== exp.FUN_SWITCH}
+          <span class="muted" aria-live="polite">The toe switch has the pedal in {editor.expMode === 1 ? 'EXP' : 'volume'} mode now; the preset starts {exp.FUN_SWITCH === 1 ? 'with EXP' : 'in volume mode'}.</span>
+        {/if}
       </div>
       <div class="pick" class:dim={exp.FUN_SWITCH !== 1}>
         <div class="modules" role="radiogroup" aria-label="Module">

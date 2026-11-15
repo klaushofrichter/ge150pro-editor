@@ -8,6 +8,8 @@ import type { Rhythm } from './protocol/rhythm';
 import { runSelfTest, type CheckResult } from './selftest';
 import { atSlot, backupFileName, changedSlots, layoutToFile, originsFrom, samePreset, type Layout, type Origin } from './arrange';
 import { dirFiles, errorText, pickDirectory } from './files';
+import { expTarget } from './catalog';
+import { withoutPedalMove } from './exp';
 import { listBackups, ORIGINAL_ID, saveBackup } from './backups';
 
 export interface WriteProgress {
@@ -43,6 +45,13 @@ class EditorState {
   /** Live (possibly unsaved) state of the current preset. */
   live: Preset | null = $state(null);
   dirty = $state(false);
+  /**
+   * The pedal's mode now, set by its toe switch: 1 expression, 0 volume (FUN_SWITCH as the pedal reports it in `18`).
+   * A live control like the pedal itself: it changes neither `live` nor `dirty`; the preset keeps its stored mode.
+   */
+  expMode: number | null = $state(null);
+  /** The parameter the expression pedal moves was changed here (not by the pedal), so Store keeps the new value. */
+  private expEdited = false;
   demo = $state(false);
   system: SystemSettings | null = $state(null);
   globalEq: GlobalEq | null = $state(null);
@@ -146,9 +155,10 @@ class EditorState {
     dev.on('systemChange', (patch) => {
       if (this.system) this.system = { ...this.system, ...patch };
     });
-    dev.on('exp', (patch) => {
-      if (!this.live) return;
-      this.live.exp = { ...this.live.exp, ...patch };
+    dev.on('exp', ({ FUN_SWITCH, ...rest }) => {
+      if (FUN_SWITCH !== undefined) this.expMode = FUN_SWITCH; // the toe switch (or a report of the current mode)
+      if (!this.live || Object.keys(rest).length === 0) return;
+      this.live.exp = { ...this.live.exp, ...rest };
       this.markDirtyIfChanged();
     });
     dev.on('rhythm', (r) => (this.rhythm = r));
@@ -160,8 +170,10 @@ class EditorState {
       this.markDirtyIfChanged();
     });
     dev.on('stored', (index) => {
-      if (this.live && this.live.index === index) {
-        this.setPreset(index, $state.snapshot(this.live) as Preset);
+      const kept = this.storable();
+      if (kept && kept.index === index) {
+        this.setPreset(index, kept);
+        this.expEdited = false;
         this.dirty = false;
       }
     });
@@ -177,12 +189,22 @@ class EditorState {
     dev.on('error', (e) => this.fail(e));
   }
 
+  /**
+   * The live preset as Store keeps it. Where the expression pedal has moved its parameter, that is playing, not an
+   * edit: the stored value stays (unless the parameter was changed here). The toe-switch mode never reaches `live`.
+   */
+  private storable(): Preset | null {
+    if (!this.live) return null;
+    const p = $state.snapshot(this.live) as Preset;
+    return this.expEdited ? p : withoutPedalMove(p, this.presets[p.index - 1]);
+  }
+
   /** Live state reported by the pedal differs from the stored preset: unsaved changes exist. */
   private markDirtyIfChanged() {
-    const live = this.live;
+    const live = this.storable();
     const stored = live && this.presets[live.index - 1];
     if (!live || !stored || this.dirty) return;
-    const sig = (p: Preset) => JSON.stringify([$state.snapshot(p.modules), $state.snapshot(p.exp)]);
+    const sig = (p: Preset) => JSON.stringify([p.modules, p.exp]);
     if (sig(live) !== sig(stored)) this.dirty = true;
   }
 
@@ -192,6 +214,8 @@ class EditorState {
     this.current = index;
     const p = this.presets[index - 1];
     this.live = p ? structuredClone(p) : null;
+    this.expMode = p ? p.exp.FUN_SWITCH : null; // until the pedal reports otherwise
+    this.expEdited = false;
     this.dirty = false;
   }
 
@@ -207,6 +231,8 @@ class EditorState {
   /** Real-time edit: update local state now, send at most once per interval per slot. */
   editModule(slot: number, m: ModuleState) {
     if (!this.live || !this.online) return;
+    const t = expTarget(this.live.exp, this.live.modules);
+    if (t?.spec && t.slot === slot && m.values[t.spec.pos] !== this.live.modules[slot].values[t.spec.pos]) this.expEdited = true;
     this.live.modules[slot] = m;
     this.dirty = true;
     const send = $state.snapshot(m) as ModuleState;
@@ -231,6 +257,7 @@ class EditorState {
     if (!this.live || !this.online) return;
     const exp = { ...this.live.exp, ...patch };
     this.live.exp = exp;
+    if (patch.FUN_SWITCH !== undefined) this.expMode = patch.FUN_SWITCH;
     this.dirty = true;
     const d = this.device;
     if (!d) return;
@@ -244,7 +271,7 @@ class EditorState {
   async store(name?: string) {
     if (!this.live || !this.device) return;
     if (name !== undefined) this.live.name = name.slice(0, NAME_LENGTH);
-    await this.device.storePreset($state.snapshot(this.live) as Preset);
+    await this.device.storePreset(this.storable()!);
   }
 
   async rename(name: string) {
@@ -257,9 +284,10 @@ class EditorState {
   }
 
   exportMo(): { filename: string; json: string } | null {
-    if (!this.live) return null;
-    const mo = presetToMo($state.snapshot(this.live) as Preset);
-    return { filename: `${this.live.name || 'preset'}.mo`, json: JSON.stringify(mo, null, 4) };
+    const p = this.storable();
+    if (!p) return null;
+    const mo = presetToMo(p);
+    return { filename: `${p.name || 'preset'}.mo`, json: JSON.stringify(mo, null, 4) };
   }
 
   /** Load a .mo file into the current slot as live (unsaved) edits and send it to the device. */

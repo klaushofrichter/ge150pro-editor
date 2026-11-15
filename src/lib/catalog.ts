@@ -1,4 +1,6 @@
 import data from './catalog.json';
+import { EXP_PARAMS } from './protocol/exp';
+import type { ExpSettings, ModuleState } from './protocol/preset';
 
 /** `pos` is the index of the value in the module record (ModuleState.values). */
 export type ParamSpec =
@@ -47,4 +49,24 @@ export function formatValue(p: ParamSpec, raw: number): string {
 
 export function model(slot: number, type: number): Model | undefined {
   return catalog.slots[slot]?.models[type];
+}
+
+/** Catalog spellings that differ from the pedal's EXP parameter names. */
+const EXP_ALIASES: Record<string, string> = { FEEDBACK: 'F.BACK' };
+const expName = (n: string) => EXP_ALIASES[n.toUpperCase()] ?? n.toUpperCase();
+
+/**
+ * The parameter the expression pedal moves: its module slot, its EXP name, the module's current model and the
+ * parameter in it (undefined when that model has no such parameter, so the pedal has no effect). Null when the
+ * assignment is unknown.
+ */
+export function expTarget(
+  exp: Pick<ExpSettings, 'MODULE_CTRL' | 'PARA_CTRL'>,
+  modules: ModuleState[],
+): { slot: number; name: string; model: Model; spec: ParamSpec | undefined } | null {
+  const slot = exp.MODULE_CTRL;
+  const name = EXP_PARAMS[slot]?.find((p) => p.id === exp.PARA_CTRL)?.name;
+  const m = modules[slot] && model(slot, modules[slot].type);
+  if (!name || !m) return null;
+  return { slot, name, model: m, spec: m.params.find((p) => expName(p.name) === name) };
 }
