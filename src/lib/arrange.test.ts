@@ -184,7 +184,28 @@ describe('preset sets with a manifest', () => {
   });
 });
 
+describe('what counts as a change', () => {
+  it('values the pedal corrects when storing are not a change (an EXP parameter of another module, an unknown model)', () => {
+    const pedal = full();
+    const target = [...pedal];
+    const p = atSlot(pedal[3]!, 4);
+    p.exp = { ...p.exp, MODULE_CTRL: 2, PARA_CTRL: 13 }; // as the pedal stores it
+    pedal[3] = p;
+    target[3] = { ...p, exp: { ...p.exp, PARA_CTRL: 5 } }; // 5 is not an AMP parameter: the pedal makes it 13
+    expect(changedSlots(pedal, target)).toEqual([]);
+    target[3] = { ...p, exp: { ...p.exp, PARA_CTRL: 14 } }; // another AMP parameter: a real change
+    expect(changedSlots(pedal, target)).toEqual([4]);
+  });
+});
+
 describe('backup files', () => {
+  it('read a whole-device backup, which carries system settings besides the presets', () => {
+    const file = { ...layoutToFile(full(), 'Pedal and system settings'), system: { brightness: 10 }, globalEq: null, spillOver: true };
+    const { layout, name } = fileToLayout(JSON.parse(JSON.stringify(file)));
+    expect(name).toBe('Pedal and system settings');
+    expect(isComplete(layout)).toBe(true);
+  });
+
   it('are named with the second, and with characters file systems refuse replaced', () => {
     expect(backupFileName('My: set/1\n', '2026-11-14T10:15:42.123Z')).toBe('GE150PRO My_ set_1_ 2026-11-14-10-15-42.json');
   });
