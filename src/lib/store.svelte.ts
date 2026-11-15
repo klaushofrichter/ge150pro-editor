@@ -6,10 +6,10 @@ import type { Message } from './protocol/frame';
 import type { GlobalEq, SystemSettings } from './protocol/system';
 import type { Rhythm } from './protocol/rhythm';
 import { runSelfTest, type CheckResult } from './selftest';
-import { atSlot, backupFileName, changedSlots, layoutToFile, originsFrom, samePreset, type Layout, type Origin } from './arrange';
+import { atSlot, backupFileName, changedSlots, trimName, layoutToFile, originsFrom, samePreset, type Layout, type Origin } from './arrange';
 import { dirFiles, errorText, pickDirectory } from './files';
 import { expTarget } from './catalog';
-import { withoutPedalMove } from './exp';
+import { turnedOnPedal, withoutPedalMove } from './exp';
 import { listBackups, ORIGINAL_ID, saveBackup } from './backups';
 
 export interface WriteProgress {
@@ -22,6 +22,11 @@ export interface WriteProgress {
 }
 
 const SEND_INTERVAL_MS = 40;
+
+/** After a request of ours (connect, select, B0), reports answer it rather than show the pedal's own controls. */
+const QUIET_MS = 1500;
+const PEDAL_ADVICE =
+  'While the editor is connected, change things in the editor only: the pedal and the editor get out of step, and unsaved changes can be lost. The expression pedal and its toe switch are fine to use.';
 
 export interface LogEntry {
   /** Increasing per message: the list's key. */
@@ -52,6 +57,12 @@ class EditorState {
   expMode: number | null = $state(null);
   /** The parameter the expression pedal moves was changed here (not by the pedal), so Store keeps the new value. */
   private expEdited = false;
+  /** A warning that the pedal's own buttons or knobs were used (null when there is none to show). */
+  pedalNotice: string | null = $state(null);
+  /** The general warning was shown for this connection. */
+  private pedalWarned = false;
+  /** Until then (performance.now()), reports answer one of our requests. */
+  private quietUntil = 0;
   demo = $state(false);
   system: SystemSettings | null = $state(null);
   globalEq: GlobalEq | null = $state(null);
@@ -102,6 +113,8 @@ class EditorState {
       }
       this.wire(dev);
       this.device = dev;
+      this.pedalNotice = null;
+      this.pedalWarned = false;
       this.status = 'loading';
       try {
         await dev.open();
@@ -146,18 +159,27 @@ class EditorState {
         this.settleReady();
         // The live-state answers to the connect sequence's B0 arrive before the preset dump has
         // finished, so ask again now that the stored copy exists to compare against.
+        this.quiet();
         dev.requestCurrent();
       }
+    });
+    dev.on('switched', (index) => {
+      const name = this.dirty && this.live ? trimName(this.live.name) || presetLabel(this.live.index) : null;
+      this.pedalControlsUsed(name ? `The pedal switched presets itself, so the unsaved changes to "${name}" are gone.` : 'The pedal switched presets itself.', true);
+      this.adoptCurrent(index);
     });
     dev.on('current', (index) => this.adoptCurrent(index));
     dev.on('system', (s) => (this.system = s));
     // Changed on the pedal itself: update the UI only, never echo back.
     dev.on('systemChange', (patch) => {
       if (this.system) this.system = { ...this.system, ...patch };
+      this.pedalControlsUsed("A setting was changed in the pedal's menu.");
     });
     dev.on('exp', ({ FUN_SWITCH, ...rest }) => {
       if (FUN_SWITCH !== undefined) this.expMode = FUN_SWITCH; // the toe switch (or a report of the current mode)
       if (!this.live || Object.keys(rest).length === 0) return;
+      const exp = this.live.exp;
+      if (Object.entries(rest).some(([k, v]) => exp[k as keyof ExpSettings] !== v)) this.pedalControlsUsed("The EXP settings were changed in the pedal's menu.");
       this.live.exp = { ...this.live.exp, ...rest };
       this.markDirtyIfChanged();
     });
@@ -166,6 +188,7 @@ class EditorState {
     dev.on('spillOver', (on) => (this.spillOver = on));
     dev.on('module', (slot, m) => {
       if (!this.live) return;
+      if (turnedOnPedal(this.live, slot, m)) this.pedalControlsUsed("A knob or switch on the pedal was used.");
       this.live.modules[slot] = m;
       this.markDirtyIfChanged();
     });
@@ -204,6 +227,28 @@ class EditorState {
     return this.expEdited ? p : withoutPedalMove(p, this.presets[p.index - 1]);
   }
 
+  /** Reports in the next QUIET_MS answer a request of ours. */
+  private quiet() {
+    this.quietUntil = Math.max(this.quietUntil, performance.now() + QUIET_MS);
+  }
+
+  /**
+   * The pedal's own controls were used. `what` says how; the advice follows. Reports answering our own requests, a
+   * write in progress and the loading at connect do not count. A preset switch with lost changes is always told; other
+   * uses once per connection.
+   */
+  private pedalControlsUsed(what: string, always = false) {
+    const writing = this.writing && ['backup', 'writing', 'verifying'].includes(this.writing.phase);
+    if (!always && (this.status !== 'ready' || writing || performance.now() < this.quietUntil)) return;
+    if (!always && this.pedalWarned) return;
+    this.pedalWarned = true;
+    this.pedalNotice = `${what} ${PEDAL_ADVICE}`;
+  }
+
+  dismissPedalNotice() {
+    this.pedalNotice = null;
+  }
+
   /** Live state reported by the pedal differs from the stored preset: unsaved changes exist. */
   private markDirtyIfChanged() {
     const live = this.storable();
@@ -230,6 +275,7 @@ class EditorState {
     // the editor switches first, so edits made while the pedal loads the preset (SELECT_SETTLE_MS) belong to the new
     // preset, which is where the device queue delivers them
     this.adoptCurrent(index);
+    this.quiet();
     await this.device?.selectPreset(index);
   }
 
@@ -273,10 +319,26 @@ class EditorState {
     }
   }
 
+  /** Store the current preset; resolves once the pedal has acknowledged it. */
   async store(name?: string) {
-    if (!this.live || !this.device) return;
+    const dev = this.device;
+    if (!this.live || !dev) return;
     if (name !== undefined) this.live.name = name.slice(0, NAME_LENGTH);
-    await this.device.storePreset(this.storable()!);
+    const index = this.live.index;
+    let ack!: (i: number) => void;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const acked = new Promise<void>((resolve, reject) => {
+      ack = (i) => i === index && resolve();
+      timer = setTimeout(() => reject(new Error('the pedal did not acknowledge it')), 3000);
+    });
+    dev.on('stored', ack);
+    try {
+      await dev.storePreset(this.storable()!);
+      await acked;
+    } finally {
+      clearTimeout(timer);
+      dev.off('stored', ack);
+    }
   }
 
   async rename(name: string) {
@@ -470,10 +532,10 @@ class EditorState {
     return written.filter((i) => !samePreset(this.presets[i - 1], target[i - 1])).map((i) => presetLabel(i));
   }
 
-  /** Step to the previous/next preset, wrapping around 1..200. */
-  step(delta: number) {
+  /** The previous/next preset, wrapping around 1..200. */
+  neighbor(delta: number) {
     const from = this.current || 1;
-    return this.select(((from - 1 + delta + PRESET_COUNT) % PRESET_COUNT) + 1);
+    return ((from - 1 + delta + PRESET_COUNT) % PRESET_COUNT) + 1;
   }
 
   async chooseFolder() {
