@@ -110,6 +110,10 @@ V2.1.2, 2026-11-14, after the pedal's EXP calibration (before calibrating, the t
 The editor treats the mode and the pedal-moved value as playing, not as edits: they do not mark the preset as
 changed, and Store keeps the preset's own mode and value (`src/lib/exp.ts`).
 
+Storing (`C3`) also loads the stored values into the sound: after a store with THRES 54 while the pedal stood at 11,
+the pedal's live THRES was 54; the toe-switch mode stayed. *Observed*, 2026-11-14. The editor therefore sends the
+pedal's value back (`82`–`8A`) right after the `43` acknowledgement, so the sound stays where the foot is.
+
 ## Drum machine
 
 `8C 01` asks for the state; `0C` reports it, also whenever it changes on the pedal: `ON, MODE, STYLE, VOLUME` (one

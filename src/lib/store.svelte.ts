@@ -172,9 +172,14 @@ class EditorState {
     dev.on('stored', (index) => {
       const kept = this.storable();
       if (kept && kept.index === index) {
+        const live = $state.snapshot(this.live) as Preset;
         this.setPreset(index, kept);
         this.expEdited = false;
         this.dirty = false;
+        // Storing also loads the stored values into the sound (observed 2026-11-14): put back the value the expression
+        // pedal had set, so the sound stays where the foot is
+        const moved = kept.modules.findIndex((m, s) => m !== live.modules[s] && m.values.some((v, i) => v !== live.modules[s].values[i]));
+        if (moved >= 0) dev.setModule(moved, live.modules[moved]);
       }
     });
     dev.on('message', (m: Message, dir) => {
