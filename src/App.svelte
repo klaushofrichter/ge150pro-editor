@@ -21,6 +21,13 @@
   let showSettings = $state(false);
   let showSystem = $state(false);
   let showExp = $state(false);
+  /** The pedal's mode now (toe switch): EXP moves the assigned parameter, VOL the volume, OFF when that one is off. */
+  const expMode = $derived.by(() => {
+    const exp = editor.live?.exp;
+    if (!exp || editor.expMode === null) return 'EXP';
+    if (editor.expMode === 1) return 'EXP';
+    return exp.VOL_SWITCH === 1 ? 'VOL' : 'OFF';
+  });
   let showArrange = $state(false);
   /** The first-visit panel: what this is, the factory presets, the risk. */
   let showWelcome = $state(!termsAccepted());
@@ -143,9 +150,9 @@
       <span>CAB-L</span><Toggle checked={editor.system?.cabLeft ?? false} disabled={!editor.system} label="CAB-L" onchange={(v) => editor.updateSystem({ cabLeft: v })} />
       <span>CAB-R</span><Toggle checked={editor.system?.cabRight ?? false} disabled={!editor.system} label="CAB-R" onchange={(v) => editor.updateSystem({ cabRight: v })} />
     </div>
-    <button class="box exp" title="Expression pedal assignment of this preset" disabled={!editor.live} onclick={() => (showExp = true)}>
-      <span>EXP: {editor.live ? (editor.live.exp.FUN_SWITCH === 1 ? expLabel(editor.live.exp) : 'OFF') : '–'}</span>
-      <span class="chip">EXP</span>
+    <button class="box exp" title="Expression pedal assignment of this preset, and the pedal's mode now (EXP or VOL, set by its toe switch)" disabled={!editor.live} onclick={() => (showExp = true)}>
+      <span>EXP: {editor.live ? expLabel(editor.live.exp) : '–'}</span>
+      <span class="chip" class:vol={expMode === 'VOL'} title="Mode of the pedal now; the toe switch changes it">{expMode}</span>
     </button>
 
     <span class="grow"></span>
@@ -195,6 +202,7 @@
         <button disabled={!editor.live} onclick={exportMo}>Export .mo</button>
         <label class="btn">Import .mo<input type="file" accept=".mo,application/json" hidden onchange={importFile} /></label>
         <button disabled={!editor.device || editor.selfTest?.length === 0} title="Set a few silent values, read them back from the pedal, restore them. Nothing is stored." onclick={() => editor.runSelfTest()}>Device self-test</button>
+        <button disabled={editor.log.length === 0} title="Empty the USB message log below" onclick={() => (editor.log = [])}>Clear USB log</button>
       </div>
       {#if editor.selfTest}
         <ul class="selftest">
@@ -416,6 +424,9 @@
     background: var(--panel);
     padding: 6px 12px;
     border-radius: 3px;
+  }
+  .chip.vol {
+    color: var(--accent);
   }
   .grow {
     flex: 1;
