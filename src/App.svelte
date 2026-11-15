@@ -4,6 +4,7 @@
   import ModulePanel from './components/ModulePanel.svelte';
   import SystemPanel from './components/SystemPanel.svelte';
   import ExpPanel from './components/ExpPanel.svelte';
+  import Dialog from './components/Dialog.svelte';
   import ArrangeDialog from './components/ArrangeDialog.svelte';
   import WelcomeDialog, { termsAccepted } from './components/WelcomeDialog.svelte';
   import DesktopOnly, { isPhone } from './components/DesktopOnly.svelte';
@@ -63,16 +64,40 @@
     presetList?.querySelector('.active')?.scrollIntoView({ block: 'nearest' });
   });
 
-  async function store() {
-    if (!editor.live) return;
+  /** Store the current preset after asking for its name; true once the pedal has it. */
+  async function store(): Promise<boolean> {
+    if (!editor.live) return false;
     const name = askPresetName(`Store to ${presetLabel(editor.live.index)} on the device. Preset name`, trimName(editor.live.name));
-    if (name === null) return;
+    if (name === null) return false;
     try {
       // an empty or unchanged name keeps the preset's name as it is (its stored bytes included)
       await editor.store(name && name !== trimName(editor.live.name) ? name : undefined);
+      return true;
     } catch (err) {
       notice = `The preset was not stored: ${errorText(err)}`;
+      return false;
     }
+  }
+
+  /** A preset to switch to once the user decided about the unsaved changes (null: no question open). */
+  let pendingSwitch: number | null = $state(null);
+
+  /** Switch presets; with unsaved changes, ask first (switching discards them, on the pedal too). */
+  function goTo(index: number) {
+    if (editor.dirty) pendingSwitch = index;
+    else editor.select(index);
+  }
+
+  async function saveAndSwitch() {
+    const target = pendingSwitch;
+    pendingSwitch = null;
+    if (target !== null && (await store())) editor.select(target);
+  }
+
+  function discardAndSwitch() {
+    const target = pendingSwitch;
+    pendingSwitch = null;
+    if (target !== null) editor.select(target);
   }
 
   async function rename() {
@@ -127,9 +152,9 @@
 <div class="app">
   <header class="top">
     <div class="box preset-nav">
-      <button class="arrow" aria-label="Previous preset" disabled={!editor.online} onclick={() => editor.step(-1)}>◀</button>
+      <button class="arrow" aria-label="Previous preset" disabled={!editor.online} onclick={() => goTo(editor.neighbor(-1))}>◀</button>
       <button class="pname" title="Rename" disabled={!editor.live} onclick={rename}>{editor.live?.name ?? 'GE150 PRO'}{editor.dirty ? ' *' : ''}</button>
-      <button class="arrow" aria-label="Next preset" disabled={!editor.online} onclick={() => editor.step(1)}>▶</button>
+      <button class="arrow" aria-label="Next preset" disabled={!editor.online} onclick={() => goTo(editor.neighbor(1))}>▶</button>
     </div>
     <button class="box icon" title="Store preset to device" aria-label="Store preset" disabled={!editor.live} onclick={store}>
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 4h13l3 3v13H4z" /><path d="M8 4v5h8V4M7 20v-6h10v6" /></svg>
@@ -220,6 +245,24 @@
     </section>
   {/if}
 
+  {#if pendingSwitch !== null && editor.live}
+    <Dialog title="Unsaved changes" onclose={() => (pendingSwitch = null)}>
+      <p>"{trimName(editor.live.name) || presetLabel(editor.live.index)}" has unsaved changes. Switching to {paddedLabel(pendingSwitch)} discards them, on the pedal too.</p>
+      <div class="choices">
+        <button class="connect" onclick={saveAndSwitch}>Save and switch</button>
+        <button onclick={discardAndSwitch}>Discard and switch</button>
+        <button onclick={() => (pendingSwitch = null)}>Cancel</button>
+      </div>
+    </Dialog>
+  {/if}
+
+  {#if editor.pedalNotice}
+    <div class="pedal-notice" role="alert">
+      <span>{editor.pedalNotice}</span>
+      <button onclick={() => editor.dismissPedalNotice()}>OK</button>
+    </div>
+  {/if}
+
   {#if editor.error || notice}
     <p class="error" role="alert">{editor.error || notice}</p>
   {/if}
@@ -239,7 +282,7 @@
           {#each Array.from({ length: PRESET_COUNT }, (_, k) => k + 1) as i (i)}
             {@const origin = editor.originOf(editor.presets[i - 1])}
             <li>
-              <button class:active={i === editor.current} class:unused={origin === 'empty'} disabled={!editor.online} onclick={() => editor.select(i)}>
+              <button class:active={i === editor.current} class:unused={origin === 'empty'} disabled={!editor.online} onclick={() => goTo(i)}>
                 {paddedLabel(i)}&nbsp; {editor.presets[i - 1]?.name ?? ''}
                 {#if origin === 'modified'}<span class="mark modified" title="Modified: the original set has this name with another sound">M</span>{:else if origin === 'new'}<span class="mark new" title="New: not in the original set">N</span>{/if}
               </button>
@@ -444,6 +487,22 @@
   }
   .muted {
     color: var(--muted);
+  }
+  .choices {
+    display: flex;
+    gap: 10px;
+    justify-content: flex-end;
+    margin-top: 16px;
+  }
+  .pedal-notice {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    margin: 0 24px 8px;
+    padding: 10px 16px;
+    border-left: 4px solid var(--warn);
+    background: var(--panel);
+    border-radius: 4px;
   }
   .error {
     color: var(--danger);

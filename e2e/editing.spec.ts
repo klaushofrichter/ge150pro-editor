@@ -29,6 +29,9 @@ test('switching to another preset shows its own stored sound, not the edit', asy
   await page.getByRole('button', { name: /^Increase / }).first().click();
   await expect(page.locator('.pname')).toHaveText('Clean 4 *');
   await page.getByRole('button', { name: 'Next preset' }).click();
+  const ask = page.getByRole('dialog', { name: 'Unsaved changes' });
+  await expect(ask).toContainText('"Clean 4" has unsaved changes. Switching to 04B discards them');
+  await ask.getByRole('button', { name: 'Discard and switch' }).click();
   await expect(page.locator('.pname')).toHaveText('Crunch 4');
   await page.getByRole('button', { name: 'Previous preset' }).click();
   await expect(page.locator('.pname')).toHaveText('Clean 4'); // the unsaved edit is gone, as on the pedal
@@ -59,4 +62,21 @@ test('the tools panel has a Clear USB log button, disabled while the log is empt
   await page.goto('./?demo');
   await page.getByRole('button', { name: 'Tools and USB log' }).click();
   await expect(page.getByRole('button', { name: 'Clear USB log' })).toBeDisabled();
+});
+
+test('switching with unsaved changes asks first: Cancel stays, Save and switch stores and goes on', async ({ page }) => {
+  await page.goto('./?demo');
+  await preset(page, '05A').click();
+  await page.getByRole('button', { name: /^AMP/ }).click();
+  await page.getByRole('button', { name: /^Increase / }).first().click();
+  await expect(page.locator('.pname')).toHaveText('Clean 5 *');
+  await preset(page, '06A').click();
+  const ask = page.getByRole('dialog', { name: 'Unsaved changes' });
+  await ask.getByRole('button', { name: 'Cancel' }).click();
+  await expect(ask).toBeHidden();
+  await expect(page.locator('.pname')).toHaveText('Clean 5 *'); // still there, still unsaved
+  page.once('dialog', (d) => d.accept()); // the name prompt of Save
+  await preset(page, '06A').click();
+  await ask.getByRole('button', { name: 'Save and switch' }).click();
+  await expect(page.locator('.pname')).toHaveText('Clean 6');
 });

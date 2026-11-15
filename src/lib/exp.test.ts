@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { expTarget, model } from './catalog';
-import { withoutPedalMove } from './exp';
+import { turnedOnPedal, withoutPedalMove } from './exp';
 import { demoPresets } from './demo';
 import type { Preset } from './protocol/preset';
 
@@ -52,5 +52,15 @@ describe('expression pedal', () => {
     const other = { ...stored, modules: stored.modules.with(DS, { ...stored.modules[DS], type: 3 }) };
     expect(withoutPedalMove(other, stored)).toBe(other);
     expect(withoutPedalMove(same, undefined)).toBe(same);
+  });
+
+  it('tells the pedal moving its parameter apart from a knob or switch on the pedal', () => {
+    const live = base();
+    const gainAt = (v: number) => live.modules[DS].values.with(expTarget(live.exp, live.modules)!.spec!.pos, v);
+    expect(turnedOnPedal(live, DS, { ...live.modules[DS], values: gainAt(100) })).toBe(false);
+    expect(turnedOnPedal(live, DS, { ...live.modules[DS], values: gainAt(35).with(0, 99) })).toBe(true);
+    expect(turnedOnPedal(live, DS, { ...live.modules[DS], on: false })).toBe(true);
+    expect(turnedOnPedal(live, 2, { ...live.modules[2], values: live.modules[2].values.with(0, live.modules[2].values[0] + 1) })).toBe(true);
+    expect(turnedOnPedal(live, 2, live.modules[2])).toBe(false);
   });
 });
