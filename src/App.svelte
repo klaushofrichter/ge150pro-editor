@@ -497,12 +497,25 @@
   .pedal-notice {
     display: flex;
     align-items: center;
-    gap: 16px;
-    margin: 0 24px 8px;
-    padding: 10px 16px;
-    border-left: 4px solid var(--warn);
-    background: var(--panel);
-    border-radius: 4px;
+    gap: 20px;
+    margin: 4px 24px 12px;
+    padding: 14px 20px;
+    background: var(--warn);
+    color: #1b1b1b;
+    font-size: 1.05rem;
+    font-weight: 600;
+    border-radius: 6px;
+  }
+  .pedal-notice::before {
+    content: '⚠';
+    font-size: 1.6rem;
+  }
+  .pedal-notice span {
+    flex: 1;
+  }
+  .pedal-notice button {
+    min-width: 5rem;
+    font-weight: 600;
   }
   .error {
     color: var(--danger);
