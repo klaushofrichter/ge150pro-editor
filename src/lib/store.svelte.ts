@@ -10,6 +10,7 @@ import { atSlot, backupFileName, changedSlots, trimName, layoutToFile, originsFr
 import { dirFiles, errorText, pickDirectory } from './files';
 import { expTarget } from './catalog';
 import { turnedOnPedal, withoutPedalMove } from './exp';
+import { originalFor } from './diff';
 import { listBackups, ORIGINAL_ID, saveBackup } from './backups';
 
 export interface WriteProgress {
@@ -346,9 +347,16 @@ class EditorState {
   /** Store the current preset; resolves once the pedal has acknowledged it. */
   async store(name?: string) {
     const dev = this.device;
-    if (!this.live || !dev) return;
+    if (!this.live || (!dev && !this.demo)) return;
     if (name !== undefined) this.live.name = name.slice(0, NAME_LENGTH);
     const index = this.live.index;
+    if (!dev) {
+      // the demo has no pedal: keep the preset here, as a store would
+      this.setPreset(index, this.storable()!);
+      this.expEdited = false;
+      this.dirty = false;
+      return;
+    }
     let ack!: (i: number) => void;
     let timer: ReturnType<typeof setTimeout> | undefined;
     const acked = new Promise<void>((resolve, reject) => {
@@ -384,10 +392,26 @@ class EditorState {
   /** Load a .mo file into the current slot as live (unsaved) edits and send it to the device. */
   importMo(text: string) {
     if (!this.live) throw new Error('select a preset first');
-    const p = moToPreset(JSON.parse(text) as MoFile, this.live.index);
-    p.modules.forEach((m, slot) => this.editModule(slot, m));
+    this.applyAsEdits(moToPreset(JSON.parse(text) as MoFile, this.live.index));
+  }
+
+  /** Another preset's sound and name into the current slot, as live (unsaved) edits sent to the device. */
+  private applyAsEdits(p: Preset) {
+    if (!this.live) return;
+    p.modules.forEach((m, slot) => this.editModule(slot, structuredClone(m)));
     this.live.name = p.name;
-    this.editExp(p.exp);
+    this.editExp({ ...p.exp });
+  }
+
+  /** The original preset with the current preset's name (null without an original set or such a name). */
+  get originalPreset(): Preset | null {
+    return this.live ? originalFor(this.live, this.original) : null;
+  }
+
+  /** The original preset's sound into the current slot as unsaved edits; Save stores it, Revert goes back. */
+  restoreOriginal() {
+    const o = this.originalPreset;
+    if (o) this.applyAsEdits(o);
   }
 
   /** Apply one system setting locally and send it (system settings take effect immediately). */

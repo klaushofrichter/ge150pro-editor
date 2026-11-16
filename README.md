@@ -48,6 +48,9 @@ only to describe what the pedal does.
 - **The original:** the factory presets become a locked backup that cannot be changed or deleted. Presets are then
   marked **M** (modified: a factory name with another sound) or **N** (new: a name the factory set does not have,
   copies and renamed presets included).
+- **Review differences:** for a modified preset or one with unsaved changes, a window lists every setting that differs
+  from the original preset of the same name and from the last saved state, with **Restore original** (loaded as
+  unsaved changes; Save keeps them) and **Restore last saved**.
 
 ### The factory presets
 
