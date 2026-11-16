@@ -42,6 +42,7 @@ test('first visit: a panel explains the editor and the terms, must be accepted, 
   // the About button shows it again, now as a plain dialog
   await page.getByRole('button', { name: 'About, factory presets and terms of use' }).click();
   await expect(panel).toBeVisible();
+  await expect(panel.getByText(/^Version /)).toBeVisible();
   await page.keyboard.press('Escape');
   await expect(panel).toBeHidden();
   await page.getByRole('button', { name: 'About, factory presets and terms of use' }).click();
