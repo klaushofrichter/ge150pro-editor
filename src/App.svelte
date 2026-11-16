@@ -214,7 +214,7 @@
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 6h16M4 12h16M4 18h16" /></svg>
     </button>
     <button class="box icon" aria-label="System settings" title="System settings" onclick={() => (showSystem = true)}>
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="3.2" /><path d="M12 2.5v3M12 18.5v3M2.5 12h3M18.5 12h3M5.3 5.3l2.1 2.1M16.6 16.6l2.1 2.1M5.3 18.7l2.1-2.1M16.6 7.4l2.1-2.1" /></svg>
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path stroke-linejoin="round" d="M19.26 9.75 L21.80 10.01 L21.80 13.99 L19.26 14.25 L18.72 15.55 L20.33 17.53 L17.53 20.33 L15.55 18.72 L14.25 19.26 L13.99 21.80 L10.01 21.80 L9.75 19.26 L8.45 18.72 L6.47 20.33 L3.67 17.53 L5.28 15.55 L4.74 14.25 L2.20 13.99 L2.20 10.01 L4.74 9.75 L5.28 8.45 L3.67 6.47 L6.47 3.67 L8.45 5.28 L9.75 4.74 L10.01 2.20 L13.99 2.20 L14.25 4.74 L15.55 5.28 L17.53 3.67 L20.33 6.47 L18.72 8.45 Z" /><circle cx="12" cy="12" r="3" /></svg>
     </button>
   </header>
 
