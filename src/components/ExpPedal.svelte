@@ -26,6 +26,7 @@
       disabled={!active}
       oninput={(e) => editor.playExp(Number(e.currentTarget.value))}
     />
+    {#if live && !expMode}<span class="unknown" aria-hidden="true">{volOn ? 'Not reported in volume mode' : 'Volume mode is off'}</span>{/if}
   </div>
   <div class="readout" aria-live="polite">
     {#if !live}
@@ -33,7 +34,7 @@
     {:else if expMode}
       {#if spec}<strong>{formatValue(spec, raw)}</strong><span class="muted">{target?.name}</span>{:else}<span class="muted">no {target?.name ?? 'parameter'} here</span>{/if}
     {:else}
-      <span class="muted">{volOn ? 'Volume position is not reported over USB' : 'Volume mode is off'}</span>
+      <span class="muted">{volOn ? 'The pedal does not report its position in volume mode' : 'The pedal does nothing in volume mode'}</span>
     {/if}
   </div>
   <span class="toe" class:lit={expMode} title="The EXP LED: lit in EXP mode">
@@ -59,7 +60,21 @@
     overflow: hidden;
   }
   .vol .body {
-    opacity: 0.45;
+    background: repeating-linear-gradient(-45deg, var(--well) 0 8px, var(--line) 8px 16px);
+  }
+  .unknown {
+    position: absolute;
+    inset: 0;
+    display: grid;
+    place-items: center;
+    padding: 8px;
+    text-align: center;
+    font-size: 0.8rem;
+    font-weight: 600;
+    line-height: 1.3;
+    pointer-events: none;
+    color: var(--text);
+    text-shadow: 0 0 4px var(--panel), 0 0 8px var(--panel);
   }
   .body input {
     position: absolute;
