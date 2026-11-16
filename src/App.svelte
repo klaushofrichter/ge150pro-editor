@@ -9,7 +9,7 @@
   import WelcomeDialog, { termsAccepted } from './components/WelcomeDialog.svelte';
   import DesktopOnly, { isPhone } from './components/DesktopOnly.svelte';
   import Toggle from './components/Toggle.svelte';
-  import { catalog } from './lib/catalog';
+  import { catalog, expTarget, rawFraction } from './lib/catalog';
   import { GE150Pro } from './lib/device';
   import { paddedLabel, PRESET_COUNT, presetLabel } from './lib/protocol/preset';
   import { RHYTHM_MODES, styleName } from './lib/protocol/rhythm';
@@ -28,6 +28,12 @@
     if (!exp || editor.expMode === null) return 'EXP';
     if (editor.expMode === 1) return 'EXP';
     return exp.VOL_SWITCH === 1 ? 'VOL' : 'OFF';
+  });
+  /** Where the expression pedal stands, 0..100 (EXP mode only: in volume mode the pedal reports nothing). */
+  const expFill = $derived.by(() => {
+    const live = editor.live;
+    const t = live && expMode === 'EXP' ? expTarget(live.exp, live.modules) : null;
+    return t?.spec && live ? rawFraction(t.spec, live.modules[t.slot].values[t.spec.pos]) * 100 : 0;
   });
   let showArrange = $state(false);
   /** The first-visit panel: what this is, the factory presets, the risk. */
@@ -177,6 +183,7 @@
     </div>
     <button class="box exp" title="Expression pedal assignment of this preset, and the pedal's mode now (EXP or VOL, set by its toe switch)" disabled={!editor.live} onclick={() => (showExp = true)}>
       <span>EXP: {editor.live ? expLabel(editor.live.exp) : '–'}</span>
+      <span class="mini" class:idle={expMode !== 'EXP'} style="--fill: {expFill}%" aria-hidden="true"></span>
       <span class="chip" class:vol={expMode === 'VOL'} title="Mode of the pedal now; the toe switch changes it">{expMode}</span>
     </button>
 
@@ -467,6 +474,16 @@
     background: var(--panel);
     padding: 6px 12px;
     border-radius: 3px;
+  }
+  .mini {
+    width: 8px;
+    height: 28px;
+    border-radius: 3px;
+    background: linear-gradient(to top, var(--accent) var(--fill), var(--well) var(--fill));
+    border: 1px solid var(--line);
+  }
+  .mini.idle {
+    opacity: 0.4;
   }
   .chip.vol {
     color: var(--accent);

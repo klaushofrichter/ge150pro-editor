@@ -303,6 +303,30 @@ class EditorState {
     }
   }
 
+  /**
+   * Play the expression pedal from the editor: set the parameter it moves, as the pedal would. Like the pedal, this is
+   * playing, not an edit (no unsaved change; Store keeps the preset's value). Only in EXP mode, as on the pedal.
+   */
+  playExp(raw: number) {
+    const live = this.live;
+    if (!live || !this.online || this.expMode !== 1) return;
+    const t = expTarget(live.exp, live.modules);
+    if (!t?.spec) return;
+    const m = { ...live.modules[t.slot], values: live.modules[t.slot].values.with(t.spec.pos, raw) };
+    live.modules[t.slot] = m;
+    const send = $state.snapshot(m) as ModuleState;
+    this.throttled(`module${t.slot}`, () => this.device?.setModule(t.slot, send));
+  }
+
+  /** The toe switch from the editor: EXP or volume mode now. The preset keeps its own mode (FUNCTION). */
+  toe() {
+    const live = this.live;
+    if (!live || !this.online) return;
+    const mode = this.expMode === 1 ? 0 : 1;
+    this.expMode = mode;
+    this.device?.setExpFunction({ ...($state.snapshot(live.exp) as ExpSettings), FUN_SWITCH: mode });
+  }
+
   /** Real-time EXP edit of the current preset (not stored until store()). */
   editExp(patch: Partial<ExpSettings>) {
     if (!this.live || !this.online) return;
