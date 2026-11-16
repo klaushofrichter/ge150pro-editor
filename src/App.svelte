@@ -4,6 +4,8 @@
   import ModulePanel from './components/ModulePanel.svelte';
   import SystemPanel from './components/SystemPanel.svelte';
   import ExpPanel from './components/ExpPanel.svelte';
+  import DiffDialog from './components/DiffDialog.svelte';
+  import { sameSound } from './lib/arrange';
   import Dialog from './components/Dialog.svelte';
   import ArrangeDialog from './components/ArrangeDialog.svelte';
   import WelcomeDialog, { termsAccepted } from './components/WelcomeDialog.svelte';
@@ -11,7 +13,7 @@
   import Toggle from './components/Toggle.svelte';
   import { catalog, expTarget, rawFraction } from './lib/catalog';
   import { GE150Pro } from './lib/device';
-  import { paddedLabel, PRESET_COUNT, presetLabel } from './lib/protocol/preset';
+  import { paddedLabel, PRESET_COUNT, presetLabel, type Preset } from './lib/protocol/preset';
   import { RHYTHM_MODES, styleName } from './lib/protocol/rhythm';
   import { expLabel } from './lib/protocol/exp';
   import { editor } from './lib/store.svelte';
@@ -22,6 +24,25 @@
   let showSettings = $state(false);
   let showSystem = $state(false);
   let showExp = $state(false);
+  let showDiff = $state(false);
+  /** What each step of the signal chain does (tooltips on the chain buttons). */
+  const CHAIN_HELP = [
+    'Wah, compressor and other effects that shape the raw guitar signal before any distortion.',
+    'Overdrive, distortion, fuzz and boost pedals, in front of the amp.',
+    'The amp model: its gain and tone stack. Most of the basic sound comes from here.',
+    'The speaker cabinet the amp plays through: a cabinet model or a user IR.',
+    'Noise gate: mutes hiss and hum while you are not playing.',
+    'Equalizer after the amp: fine-tunes the tone of the whole sound.',
+    'Modulation: chorus, phaser, flanger, tremolo, vibrato and similar.',
+    'Delay: echoes of what you play.',
+    'Reverb: the sound of a room, hall or spring, last in the chain.',
+  ];
+  const chainTitle = (slot: number, name: string, on: boolean) =>
+    `${slot + 1} of 9 · ${name}${on ? '' : ' (off)'}: ${CHAIN_HELP[slot] ?? ''} The guitar signal runs through the chain from left to right; click to edit this step.`;
+  /** The current preset's mark from its live values, so unsaved changes show at once (a snapshot: originOf caches per object). */
+  const liveOrigin = $derived(editor.live ? editor.originOf($state.snapshot(editor.live) as Preset) : null);
+  /** Differences worth reviewing: unsaved changes, or another sound than the original preset of the same name. */
+  const differs = $derived(!!editor.live && (editor.dirty || (!!editor.originalPreset && !sameSound(editor.originalPreset, editor.live))));
   /** The pedal's mode now (toe switch): EXP moves the assigned parameter, VOL the volume, OFF when that one is off. */
   const expMode = $derived.by(() => {
     const exp = editor.live?.exp;
@@ -207,12 +228,15 @@
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 6h16M4 12h16M4 18h16" /></svg>
     </button>
     <button class="box icon" aria-label="System settings" title="System settings" onclick={() => (showSystem = true)}>
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="3.2" /><path d="M12 2.5v3M12 18.5v3M2.5 12h3M18.5 12h3M5.3 5.3l2.1 2.1M16.6 16.6l2.1 2.1M5.3 18.7l2.1-2.1M16.6 7.4l2.1-2.1" /></svg>
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path stroke-linejoin="round" d="M19.26 9.75 L21.80 10.01 L21.80 13.99 L19.26 14.25 L18.72 15.55 L20.33 17.53 L17.53 20.33 L15.55 18.72 L14.25 19.26 L13.99 21.80 L10.01 21.80 L9.75 19.26 L8.45 18.72 L6.47 20.33 L3.67 17.53 L5.28 15.55 L4.74 14.25 L2.20 13.99 L2.20 10.01 L4.74 9.75 L5.28 8.45 L3.67 6.47 L6.47 3.67 L8.45 5.28 L9.75 4.74 L10.01 2.20 L13.99 2.20 L14.25 4.74 L15.55 5.28 L17.53 3.67 L20.33 6.47 L18.72 8.45 Z" /><circle cx="12" cy="12" r="3" /></svg>
     </button>
   </header>
 
   {#if showSystem}
     <SystemPanel onclose={() => (showSystem = false)} />
+  {/if}
+  {#if showDiff}
+    <DiffDialog onclose={() => (showDiff = false)} />
   {/if}
   {#if showExp}
     <ExpPanel onclose={() => (showExp = false)} />
@@ -254,10 +278,11 @@
 
   {#if pendingSwitch !== null && editor.live}
     <Dialog title="Unsaved changes" onclose={() => (pendingSwitch = null)}>
-      <p>"{trimName(editor.live.name) || presetLabel(editor.live.index)}" has unsaved changes. Switching to {paddedLabel(pendingSwitch)} discards them, on the pedal too.</p>
+      {@const reload = pendingSwitch === editor.live.index}
+      <p>"{trimName(editor.live.name) || presetLabel(editor.live.index)}" has unsaved changes. {reload ? 'Reloading' : 'Switching to'} {paddedLabel(pendingSwitch)} discards them, on the pedal too.</p>
       <div class="choices">
-        <button class="connect" onclick={saveAndSwitch}>Save and switch</button>
-        <button onclick={discardAndSwitch}>Discard and switch</button>
+        <button class="connect" onclick={saveAndSwitch}>{reload ? 'Save' : 'Save and switch'}</button>
+        <button onclick={discardAndSwitch}>{reload ? 'Discard and reload' : 'Discard and switch'}</button>
         <button onclick={() => (pendingSwitch = null)}>Cancel</button>
       </div>
     </Dialog>
@@ -267,6 +292,13 @@
     <div class="pedal-notice" role="alert">
       <span>{editor.pedalNotice}</span>
       <button onclick={() => editor.dismissPedalNotice()}>OK</button>
+    </div>
+  {/if}
+
+  {#if !editor.demo && !editor.device && editor.status !== 'connecting'}
+    <div class="pedal-notice" role="alert">
+      <span>The pedal is not connected.{editor.loaded ? ' The presets shown are from the last connection and may not match the pedal; nothing can be changed until it is connected again.' : ''}</span>
+      {#if supported}<button onclick={() => editor.connect()}>Connect device</button>{/if}
     </div>
   {/if}
 
@@ -287,11 +319,14 @@
         </h2>
         <ol bind:this={presetList}>
           {#each Array.from({ length: PRESET_COUNT }, (_, k) => k + 1) as i (i)}
-            {@const origin = editor.originOf(editor.presets[i - 1])}
+            {@const unsaved = i === editor.current && editor.dirty}
+            {@const origin = unsaved && editor.live ? liveOrigin : editor.originOf(editor.presets[i - 1])}
+            {@const mTitle = [origin === 'modified' ? 'Modified: the original set has this name with another sound' : '', unsaved ? 'Unsaved changes: differs from the preset stored on the pedal' : ''].filter(Boolean).join('. ')}
             <li>
               <button class:active={i === editor.current} class:unused={origin === 'empty'} disabled={!editor.online} onclick={() => goTo(i)}>
                 {paddedLabel(i)}&nbsp; {editor.presets[i - 1]?.name ?? ''}
-                {#if origin === 'modified'}<span class="mark modified" title="Modified: the original set has this name with another sound">M</span>{:else if origin === 'new'}<span class="mark new" title="New: not in the original set">N</span>{/if}
+                {#if origin === 'new'}<span class="mark new" title="New: not in the original set">N</span>{/if}
+                {#if mTitle}<span class="mark modified" title={mTitle}>M</span>{/if}
               </button>
             </li>
           {/each}
@@ -324,12 +359,13 @@
     <main class="main">
       <p class="banner">
         {#if editor.dirty}Changes are live on the device. Use the save button to store them.{:else if editor.live}{presetLabel(editor.live.index)} · {editor.live.name}{:else}Connect the GE150 Pro over USB and select a preset.{/if}
+        {#if differs}<button class="review" onclick={() => (showDiff = true)}>Review differences</button>{/if}
       </p>
 
       <nav class="chain" aria-label="Signal chain">
         {#each catalog.slots as s, slot (slot)}
           {@const on = editor.live?.modules[slot]?.on ?? false}
-          <button class="mod" class:on class:selected={editor.selectedSlot === slot} aria-pressed={editor.selectedSlot === slot} onclick={() => (editor.selectedSlot = slot)}>
+          <button class="mod" class:on class:selected={editor.selectedSlot === slot} aria-pressed={editor.selectedSlot === slot} title={chainTitle(slot, s.name, on)} onclick={() => (editor.selectedSlot = slot)}>
             <span>{s.name.replace('/', ' / ')}</span>
             <ModuleIcon {slot} />
           </button>
@@ -649,6 +685,11 @@
     flex-direction: column;
     min-width: 0;
     min-height: 0;
+  }
+  .review {
+    margin-left: 12px;
+    padding: 2px 10px;
+    font-size: 0.85rem;
   }
   .banner {
     text-align: center;
