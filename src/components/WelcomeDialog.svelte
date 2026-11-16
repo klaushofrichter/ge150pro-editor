@@ -98,6 +98,7 @@
   <p class="muted">Source code: <a href={REPO} target="_blank" rel="noopener">github.com/klaushofrichter/ge150pro-editor</a></p>
 
   <div class="actions">
+    <span class="muted version">Version {import.meta.env.VITE_APP_VERSION ?? 'development build'}</span>
     {#if accepted}
       <button bind:this={button} class="confirm" onclick={onconfirm}>Close</button>
     {:else}
@@ -119,7 +120,7 @@
     top: 50%;
     left: 50%;
     transform: translate(-50%, -50%);
-    width: min(720px, calc(100vw - 32px));
+    width: min(900px, calc(100vw - 32px));
     max-height: calc(100vh - 32px);
     overflow-y: auto;
     background: var(--panel);
@@ -165,7 +166,9 @@
   }
   .actions {
     display: flex;
-    justify-content: flex-end;
+    justify-content: space-between;
+    align-items: center;
+    gap: 12px;
     margin-top: 14px;
   }
   .confirm {
