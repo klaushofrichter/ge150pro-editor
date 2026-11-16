@@ -4,6 +4,8 @@
   import ModulePanel from './components/ModulePanel.svelte';
   import SystemPanel from './components/SystemPanel.svelte';
   import ExpPanel from './components/ExpPanel.svelte';
+  import DiffDialog from './components/DiffDialog.svelte';
+  import { sameSound } from './lib/arrange';
   import Dialog from './components/Dialog.svelte';
   import ArrangeDialog from './components/ArrangeDialog.svelte';
   import WelcomeDialog, { termsAccepted } from './components/WelcomeDialog.svelte';
@@ -22,6 +24,9 @@
   let showSettings = $state(false);
   let showSystem = $state(false);
   let showExp = $state(false);
+  let showDiff = $state(false);
+  /** Differences worth reviewing: unsaved changes, or another sound than the original preset of the same name. */
+  const differs = $derived(!!editor.live && (editor.dirty || (!!editor.originalPreset && !sameSound(editor.originalPreset, editor.live))));
   /** The pedal's mode now (toe switch): EXP moves the assigned parameter, VOL the volume, OFF when that one is off. */
   const expMode = $derived.by(() => {
     const exp = editor.live?.exp;
@@ -214,6 +219,9 @@
   {#if showSystem}
     <SystemPanel onclose={() => (showSystem = false)} />
   {/if}
+  {#if showDiff}
+    <DiffDialog onclose={() => (showDiff = false)} />
+  {/if}
   {#if showExp}
     <ExpPanel onclose={() => (showExp = false)} />
   {/if}
@@ -324,6 +332,7 @@
     <main class="main">
       <p class="banner">
         {#if editor.dirty}Changes are live on the device. Use the save button to store them.{:else if editor.live}{presetLabel(editor.live.index)} · {editor.live.name}{:else}Connect the GE150 Pro over USB and select a preset.{/if}
+        {#if differs}<button class="review" onclick={() => (showDiff = true)}>Review differences</button>{/if}
       </p>
 
       <nav class="chain" aria-label="Signal chain">
@@ -649,6 +658,11 @@
     flex-direction: column;
     min-width: 0;
     min-height: 0;
+  }
+  .review {
+    margin-left: 12px;
+    padding: 2px 10px;
+    font-size: 0.85rem;
   }
   .banner {
     text-align: center;

@@ -81,6 +81,32 @@ test('EXP window: mode now is playing, the active mode is highlighted, and the o
   await expect(page.locator('.pname')).toHaveText('Clean 1');
 });
 
+test('Review differences shows what differs from the original, and restores the original or the last saved state', async ({ page }) => {
+  const errors = watchErrors(page);
+  await page.goto('./?demo');
+  await preset(page, '02B').click(); // Crunch 2: modified (M), the demo's original has another AMP GAIN
+  await expect(page.locator('.pname')).toHaveText('Crunch 2');
+  await page.getByRole('button', { name: 'Review differences' }).click();
+  const dialog = page.getByRole('dialog', { name: 'DIFFERENCES' });
+  await expect(dialog.locator('tbody tr').first()).toContainText('GAIN');
+  await dialog.getByRole('button', { name: 'Restore original' }).click();
+  await expect(dialog).toContainText('Same sound as the original 2B');
+  await expect(page.locator('.pname')).toHaveText('Crunch 2 *'); // unsaved until Save
+  await expect(dialog.getByRole('button', { name: 'Restore original' })).toBeDisabled();
+  await dialog.getByRole('button', { name: 'Restore last saved' }).click();
+  await expect(page.locator('.pname')).toHaveText('Crunch 2');
+  await expect(dialog).toContainText('None: the preset is as last saved.');
+  await expect(dialog.locator('tbody tr').first()).toContainText('GAIN');
+  expect(errors).toEqual([]);
+});
+
+test('an original preset has no Review differences button until it is changed', async ({ page }) => {
+  await page.goto('./?demo');
+  await preset(page, '02A').click();
+  await expect(page.locator('.pname')).toHaveText('Clean 2');
+  await expect(page.getByRole('button', { name: 'Review differences' })).toBeHidden();
+});
+
 test('the tools panel has a Clear USB log button, disabled while the log is empty', async ({ page }) => {
   await page.goto('./?demo');
   await page.getByRole('button', { name: 'Tools and USB log' }).click();
