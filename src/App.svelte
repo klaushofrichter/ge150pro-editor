@@ -13,7 +13,7 @@
   import Toggle from './components/Toggle.svelte';
   import { catalog, expTarget, rawFraction } from './lib/catalog';
   import { GE150Pro } from './lib/device';
-  import { paddedLabel, PRESET_COUNT, presetLabel } from './lib/protocol/preset';
+  import { paddedLabel, PRESET_COUNT, presetLabel, type Preset } from './lib/protocol/preset';
   import { RHYTHM_MODES, styleName } from './lib/protocol/rhythm';
   import { expLabel } from './lib/protocol/exp';
   import { editor } from './lib/store.svelte';
@@ -25,6 +25,8 @@
   let showSystem = $state(false);
   let showExp = $state(false);
   let showDiff = $state(false);
+  /** The current preset's mark from its live values, so unsaved changes show at once (a snapshot: originOf caches per object). */
+  const liveOrigin = $derived(editor.live ? editor.originOf($state.snapshot(editor.live) as Preset) : null);
   /** Differences worth reviewing: unsaved changes, or another sound than the original preset of the same name. */
   const differs = $derived(!!editor.live && (editor.dirty || (!!editor.originalPreset && !sameSound(editor.originalPreset, editor.live))));
   /** The pedal's mode now (toe switch): EXP moves the assigned parameter, VOL the volume, OFF when that one is off. */
@@ -278,6 +280,13 @@
     </div>
   {/if}
 
+  {#if !editor.demo && !editor.device && editor.status !== 'connecting'}
+    <div class="pedal-notice" role="alert">
+      <span>The pedal is not connected.{editor.loaded ? ' The presets shown are from the last connection and may not match the pedal; nothing can be changed until it is connected again.' : ''}</span>
+      {#if supported}<button onclick={() => editor.connect()}>Connect device</button>{/if}
+    </div>
+  {/if}
+
   {#if editor.error || notice}
     <p class="error" role="alert">{editor.error || notice}</p>
   {/if}
@@ -295,7 +304,7 @@
         </h2>
         <ol bind:this={presetList}>
           {#each Array.from({ length: PRESET_COUNT }, (_, k) => k + 1) as i (i)}
-            {@const origin = editor.originOf(editor.presets[i - 1])}
+            {@const origin = i === editor.current && editor.dirty && editor.live ? liveOrigin : editor.originOf(editor.presets[i - 1])}
             <li>
               <button class:active={i === editor.current} class:unused={origin === 'empty'} disabled={!editor.online} onclick={() => goTo(i)}>
                 {paddedLabel(i)}&nbsp; {editor.presets[i - 1]?.name ?? ''}

@@ -119,6 +119,26 @@ test('Save under the current name stores the restored original in the same slot,
   await expect(preset(page, '02B').locator('.mark')).toHaveCount(0); // no longer modified
 });
 
+test('an unsaved change marks the preset M at once; Revert takes the mark away', async ({ page }) => {
+  await page.goto('./?demo');
+  await preset(page, '02A').click(); // Clean 2: an original preset
+  await expect(preset(page, '02A').locator('.mark')).toHaveCount(0);
+  await page.getByRole('button', { name: /^AMP/ }).click();
+  await page.locator('.params input[type=range]').first().press('ArrowRight');
+  await expect(preset(page, '02A').locator('.mark')).toHaveText('M');
+  await page.getByRole('button', { name: 'Review differences' }).click();
+  await page.getByRole('dialog', { name: 'DIFFERENCES' }).getByRole('button', { name: 'Restore last saved' }).click();
+  await expect(preset(page, '02A').locator('.mark')).toHaveCount(0);
+});
+
+test('without a pedal (and not in the demo) a warning says so', async ({ page }) => {
+  await page.goto('./');
+  await expect(page.locator('.pedal-notice')).toContainText('The pedal is not connected.');
+  await page.goto('./?demo');
+  await expect(page.locator('.pname')).not.toHaveText('');
+  await expect(page.locator('.pedal-notice')).toBeHidden();
+});
+
 test('an original preset has no Review differences button until it is changed', async ({ page }) => {
   await page.goto('./?demo');
   await preset(page, '02A').click();
