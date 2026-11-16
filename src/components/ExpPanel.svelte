@@ -132,18 +132,19 @@
     display: inline-flex;
     gap: 4px;
   }
-  section {
-    padding: 10px 12px;
+  /* More specific than the dialog's shared section style (which has no side padding). */
+  .settings section {
+    padding: 14px 18px;
     border: 1px solid var(--line);
     border-radius: 6px;
     margin-bottom: 12px;
     opacity: 0.6;
   }
-  section.active {
+  .settings section.active {
     opacity: 1;
     border-color: var(--accent);
   }
-  section p {
+  .settings section p {
     margin: 4px 0 10px;
   }
   .tag {
