@@ -1,13 +1,13 @@
 <script lang="ts">
   import type { Snippet } from 'svelte';
 
-  let { title, onclose, footer, children }: { title: string; onclose: () => void; footer?: string; children: Snippet } = $props();
+  let { title, onclose, footer, wide = false, children }: { title: string; onclose: () => void; footer?: string; wide?: boolean; children: Snippet } = $props();
   const id = $derived(`dlg-${title.toLowerCase().replace(/\W+/g, '-')}`);
 </script>
 
 <svelte:window onkeydown={(e) => e.key === 'Escape' && onclose()} />
 <div class="backdrop" role="presentation" onclick={onclose}></div>
-<div class="dialog" role="dialog" aria-modal="true" aria-labelledby={id}>
+<div class="dialog" class:wide role="dialog" aria-modal="true" aria-labelledby={id}>
   <header>
     <h2 {id}>{title}</h2>
     <button class="close" aria-label="Close" onclick={onclose}>✕</button>
@@ -17,6 +17,9 @@
 </div>
 
 <style>
+  .dialog.wide {
+    width: min(980px, calc(100vw - 32px));
+  }
   .backdrop {
     position: fixed;
     inset: 0;

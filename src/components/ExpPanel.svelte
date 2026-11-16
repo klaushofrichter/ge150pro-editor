@@ -3,6 +3,7 @@
   import { catalog, expTarget, formatValue, rawFraction } from '../lib/catalog';
   import { EXP_MODULES, EXP_PARAMS, EXP_VOL_MAX } from '../lib/protocol/exp';
   import Dialog from './Dialog.svelte';
+  import ExpPedal from './ExpPedal.svelte';
   import SliderRow from './SliderRow.svelte';
   import Toggle from './Toggle.svelte';
 
@@ -26,36 +27,53 @@
   }
 </script>
 
-<Dialog title="EXP" {onclose} footer="Changes apply to the current preset right away; save the preset to keep them. The toe switch and the pedal's position are not changes: saving keeps the preset's own mode and value. CALIBRATE is only available on the pedal.">
+<Dialog title="EXP" wide {onclose} footer="The settings below are part of the preset: they apply right away; save the preset to keep them. The mode now (toe switch) and the pedal's position are playing, not changes. CALIBRATE is only available on the pedal.">
   {#if !exp}
     <p class="muted">Select a preset first.</p>
   {:else}
-    <section>
-      <div class="inline">
-        <h3>FUNCTION</h3>
-        <Toggle checked={exp.FUN_SWITCH === 1} label="EXP function" onchange={(on) => editor.editExp({ FUN_SWITCH: on ? 1 : 0 })} />
-        {#if editor.expMode !== null && editor.expMode !== exp.FUN_SWITCH}
-          <span class="muted" aria-live="polite">The toe switch has the pedal in {editor.expMode === 1 ? 'EXP' : 'volume'} mode now; the preset starts {exp.FUN_SWITCH === 1 ? 'with EXP' : 'in volume mode'}.</span>
-        {/if}
+  {@const modeNow = editor.expMode ?? exp.FUN_SWITCH}
+  <div class="layout">
+    <ExpPedal />
+    <div class="settings">
+    <div class="now">
+      <span class="muted">Mode now</span>
+      <div class="seg" role="radiogroup" aria-label="Mode now (toe switch)">
+        <button class="btn" role="radio" aria-checked={modeNow === 1} class:selected={modeNow === 1} disabled={!editor.online} onclick={() => modeNow !== 1 && editor.toe()}>EXP</button>
+        <button class="btn" role="radio" aria-checked={modeNow !== 1} class:selected={modeNow !== 1} disabled={!editor.online} onclick={() => modeNow === 1 && editor.toe()}>VOLUME</button>
       </div>
-      <div class="pick" class:dim={exp.FUN_SWITCH !== 1}>
+      <span class="muted">Same as a firm toe press on the pedal; the EXP LED is lit in EXP mode.</span>
+    </div>
+
+    <section class:active={modeNow === 1}>
+      <div class="inline">
+        <h3>EXP mode</h3>
+        {#if modeNow === 1}<span class="tag">active now</span>{/if}
+      </div>
+      <p class="muted">The pedal moves one parameter of the preset.</p>
+      <div class="inline">
+        <Toggle checked={exp.FUN_SWITCH === 1} label="Start in EXP mode" onchange={(on) => editor.editExp({ FUN_SWITCH: on ? 1 : 0 })} />
+        <span>Start in EXP mode <span class="muted">(otherwise the preset starts in volume mode)</span></span>
+      </div>
+      <div class="pick">
+        {#if target}
+          <div class="live" aria-live="polite">
+            {#if target.spec}
+              <span>Pedal moves <strong>{target.slotName} → {target.name}</strong> <span class="muted">({target.model})</span></span>
+              <div class="meter" style="--fill: {rawFraction(target.spec, target.raw) * 100}%"></div>
+              <output>{formatValue(target.spec, target.raw)}</output>
+            {:else}
+              <span class="warn">The current {target.slotName} model ({target.model}) has no {target.name}; the pedal has no effect.</span>
+            {/if}
+          </div>
+          {#if target.spec && !target.on}
+            <p class="warn">{target.slotName} is switched off in this preset: the pedal moves {target.name}, but you hear no change.</p>
+          {/if}
+        {/if}
         <div class="modules" role="radiogroup" aria-label="Module">
           {#each EXP_MODULES as name, m (name)}
             <button class="btn" role="radio" aria-checked={exp.MODULE_CTRL === m} class:selected={exp.MODULE_CTRL === m} onclick={() => pickModule(m)}>{name}</button>
           {/each}
         </div>
-        {#if target}
-          <div class="live" aria-live="polite">
-            {#if target.spec}
-              <span class="muted">{target.slotName} · {target.model} · {target.name}</span>
-              <div class="meter" style="--fill: {rawFraction(target.spec, target.raw) * 100}%"></div>
-              <output>{formatValue(target.spec, target.raw)}</output>
-              {#if !target.on}<span class="warn">module is off</span>{/if}
-            {:else}
-              <span class="warn">The current {target.slotName} model ({target.model}) has no {target.name}; the pedal has no effect.</span>
-            {/if}
-          </div>
-        {/if}
         <div class="params" role="radiogroup" aria-label="Parameter">
           {#each EXP_PARAMS[exp.MODULE_CTRL] ?? [] as p (p.id)}
             <button class="btn" role="radio" aria-checked={exp.PARA_CTRL === p.id} class:selected={exp.PARA_CTRL === p.id} onclick={() => editor.editExp({ PARA_CTRL: p.id })}>{p.name}</button>
@@ -64,20 +82,36 @@
       </div>
     </section>
 
-    <section>
+    <section class:active={modeNow !== 1}>
       <div class="inline">
-        <h3>EXP VOL</h3>
-        <Toggle checked={exp.VOL_SWITCH === 1} label="EXP volume" onchange={(on) => editor.editExp({ VOL_SWITCH: on ? 1 : 0 })} />
+        <h3>Volume mode</h3>
+        {#if modeNow !== 1}<span class="tag">active now</span>{/if}
+      </div>
+      <p class="muted">The pedal sets the overall volume between MIN and MAX. Its position is not reported over USB.</p>
+      <div class="inline">
+        <Toggle checked={exp.VOL_SWITCH === 1} label="Volume mode on" onchange={(on) => editor.editExp({ VOL_SWITCH: on ? 1 : 0 })} />
+        <span>Volume mode on {#if exp.VOL_SWITCH !== 1}<span class="muted">(off: in volume mode the pedal does nothing)</span>{/if}</span>
       </div>
       <div class="rows" class:dim={exp.VOL_SWITCH !== 1}>
         <SliderRow id="exp-min" label="MIN" value={exp.VOL_MIN} max={EXP_VOL_MAX} onchange={(v) => editor.editExp({ VOL_MIN: v })} />
         <SliderRow id="exp-max" label="MAX" value={exp.VOL_MAX} max={EXP_VOL_MAX} onchange={(v) => editor.editExp({ VOL_MAX: v })} />
       </div>
     </section>
+    </div>
+  </div>
   {/if}
 </Dialog>
 
 <style>
+  .layout {
+    display: flex;
+    gap: 28px;
+    align-items: flex-start;
+  }
+  .settings {
+    flex: 1;
+    min-width: 0;
+  }
   .pick {
     display: flex;
     flex-direction: column;
@@ -87,9 +121,39 @@
   .dim {
     opacity: 0.6;
   }
+  .now {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 14px;
+  }
+  .seg {
+    display: inline-flex;
+    gap: 4px;
+  }
+  section {
+    padding: 10px 12px;
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    margin-bottom: 12px;
+    opacity: 0.6;
+  }
+  section.active {
+    opacity: 1;
+    border-color: var(--accent);
+  }
+  section p {
+    margin: 4px 0 10px;
+  }
+  .tag {
+    color: var(--accent);
+    font-size: 0.85rem;
+    font-weight: 600;
+  }
   .live {
     display: grid;
-    grid-template-columns: 1fr minmax(120px, 2fr) 6rem auto;
+    grid-template-columns: 1fr minmax(120px, 2fr) 6rem;
     align-items: center;
     gap: 12px;
     padding: 8px 12px;

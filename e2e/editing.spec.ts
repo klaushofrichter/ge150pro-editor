@@ -51,11 +51,34 @@ test('the EXP box shows the pedal mode, and switching FUNCTION here is an edit o
   const chip = page.locator('.exp .chip');
   await expect(chip).toHaveText('OFF');
   await page.locator('.exp').click();
-  await page.locator('label[title="EXP volume"]').click();
+  await page.locator('label[title="Volume mode on"]').click();
   await expect(chip).toHaveText('VOL');
-  await page.locator('label[title="EXP function"]').click();
+  await page.locator('label[title="Start in EXP mode"]').click();
   await expect(chip).toHaveText('EXP');
   await expect(page.locator('.pname')).toHaveText('Clean 1 *');
+});
+
+test('EXP window: mode now is playing, the active mode is highlighted, and the on-screen pedal plays in EXP mode', async ({ page }) => {
+  await page.goto('./?demo');
+  await preset(page, '01A').click(); // Clean 1: starts in volume mode
+  await page.locator('.exp').click();
+  const now = page.getByRole('radiogroup', { name: 'Mode now (toe switch)' });
+  const exp = page.locator('section', { has: page.getByRole('heading', { name: 'EXP mode' }) });
+  const vol = page.locator('section', { has: page.getByRole('heading', { name: 'Volume mode' }) });
+  await expect(vol).toHaveClass(/active/);
+  await expect(page.getByLabel('Expression pedal position')).toBeDisabled();
+  await now.getByRole('radio', { name: 'EXP' }).click();
+  await expect(exp).toHaveClass(/active/);
+  await expect(vol).not.toHaveClass(/active/);
+  const pedal = page.getByLabel('Expression pedal position');
+  await expect(pedal).toBeEnabled();
+  await pedal.focus();
+  await page.keyboard.press('Home');
+  await expect(exp.locator('.live output')).not.toHaveText('');
+  await expect(page.locator('.pname')).toHaveText('Clean 1'); // playing, not an edit
+  await now.getByRole('radio', { name: 'VOLUME' }).click();
+  await expect(vol).toHaveClass(/active/);
+  await expect(page.locator('.pname')).toHaveText('Clean 1');
 });
 
 test('the tools panel has a Clear USB log button, disabled while the log is empty', async ({ page }) => {
