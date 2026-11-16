@@ -140,6 +140,11 @@
     margin-bottom: 12px;
     opacity: 0.6;
   }
+  /* The dialog removes the first section's top border; this frame needs it. */
+  .settings section:first-of-type {
+    border-top-style: solid;
+    border-top-width: 1px;
+  }
   .settings section.active {
     opacity: 1;
     border-color: var(--accent);
