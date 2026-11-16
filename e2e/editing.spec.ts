@@ -142,6 +142,19 @@ test('the chain buttons explain their step on hover, and a preset with unsaved c
   await expect(preset(page, '03B').locator('.mark.modified')).toHaveAttribute('title', /Unsaved changes/);
 });
 
+test('clicking the current preset with unsaved changes offers to reload it, not to switch', async ({ page }) => {
+  await page.goto('./?demo');
+  await preset(page, '02A').click();
+  await page.getByRole('button', { name: /^AMP/ }).click();
+  await page.locator('.params input[type=range]').first().press('ArrowRight');
+  await expect(page.locator('.pname')).toHaveText('Clean 2 *');
+  await preset(page, '02A').click();
+  const ask = page.getByRole('dialog', { name: 'Unsaved changes' });
+  await expect(ask).toContainText('Reloading 02A discards them');
+  await ask.getByRole('button', { name: 'Discard and reload' }).click();
+  await expect(page.locator('.pname')).toHaveText('Clean 2');
+});
+
 test('without a pedal (and not in the demo) a warning says so', async ({ page }) => {
   await page.goto('./');
   await expect(page.locator('.pedal-notice')).toContainText('The pedal is not connected.');

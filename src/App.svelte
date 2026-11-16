@@ -278,10 +278,11 @@
 
   {#if pendingSwitch !== null && editor.live}
     <Dialog title="Unsaved changes" onclose={() => (pendingSwitch = null)}>
-      <p>"{trimName(editor.live.name) || presetLabel(editor.live.index)}" has unsaved changes. Switching to {paddedLabel(pendingSwitch)} discards them, on the pedal too.</p>
+      {@const reload = pendingSwitch === editor.live.index}
+      <p>"{trimName(editor.live.name) || presetLabel(editor.live.index)}" has unsaved changes. {reload ? 'Reloading' : 'Switching to'} {paddedLabel(pendingSwitch)} discards them, on the pedal too.</p>
       <div class="choices">
-        <button class="connect" onclick={saveAndSwitch}>Save and switch</button>
-        <button onclick={discardAndSwitch}>Discard and switch</button>
+        <button class="connect" onclick={saveAndSwitch}>{reload ? 'Save' : 'Save and switch'}</button>
+        <button onclick={discardAndSwitch}>{reload ? 'Discard and reload' : 'Discard and switch'}</button>
         <button onclick={() => (pendingSwitch = null)}>Cancel</button>
       </div>
     </Dialog>
