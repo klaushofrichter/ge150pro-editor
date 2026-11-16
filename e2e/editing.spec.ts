@@ -100,6 +100,25 @@ test('Review differences shows what differs from the original, and restores the 
   expect(errors).toEqual([]);
 });
 
+test('Save under the current name stores the restored original in the same slot, after asking', async ({ page }) => {
+  await page.goto('./?demo');
+  await preset(page, '02B').click();
+  await page.getByRole('button', { name: 'Review differences' }).click();
+  const dialog = page.getByRole('dialog', { name: 'DIFFERENCES' });
+  await dialog.getByRole('button', { name: 'Restore original' }).click();
+  page.once('dialog', (d) => d.dismiss());
+  await dialog.getByRole('button', { name: 'Save under the current name' }).click();
+  await expect(page.locator('.pname')).toHaveText('Crunch 2 *'); // declined: nothing stored
+  page.once('dialog', (d) => {
+    expect(d.message()).toContain('02B "Crunch 2"');
+    void d.accept();
+  });
+  await dialog.getByRole('button', { name: 'Save under the current name' }).click();
+  await expect(dialog.getByRole('status')).toHaveText('Saved to 02B "Crunch 2".');
+  await expect(page.locator('.pname')).toHaveText('Crunch 2');
+  await expect(preset(page, '02B').locator('.mark')).toHaveCount(0); // no longer modified
+});
+
 test('an original preset has no Review differences button until it is changed', async ({ page }) => {
   await page.goto('./?demo');
   await preset(page, '02A').click();

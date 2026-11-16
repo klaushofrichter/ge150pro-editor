@@ -4,7 +4,9 @@
   // Revert.
   import { editor } from '../lib/store.svelte';
   import { presetDiff, type DiffRow } from '../lib/diff';
-  import { presetLabel } from '../lib/protocol/preset';
+  import { paddedLabel, presetLabel } from '../lib/protocol/preset';
+  import { trimName } from '../lib/arrange';
+  import { errorText } from '../lib/files';
   import Dialog from './Dialog.svelte';
 
   let { onclose }: { onclose: () => void } = $props();
@@ -13,6 +15,22 @@
   const saved = $derived(editor.live ? editor.presets[editor.live.index - 1] : null);
   const vsOriginal = $derived(original && editor.live ? presetDiff(original, editor.live) : []);
   const vsSaved = $derived(saved && editor.live && editor.dirty ? presetDiff(saved, editor.live) : []);
+  let message = $state('');
+
+  /** Store the current values under the preset's own name and slot, after asking. */
+  async function save() {
+    const live = editor.live;
+    if (!live) return;
+    const where = `${paddedLabel(live.index)} "${trimName(live.name)}"`;
+    if (!confirm(`Store the current values to ${where} on the device? They replace what is saved there.`)) return;
+    message = '';
+    try {
+      await editor.store();
+      message = `Saved to ${where}.`;
+    } catch (err) {
+      message = `Not saved: ${errorText(err)}`;
+    }
+  }
 </script>
 
 {#snippet table(rows: DiffRow[], left: string, right: string)}
@@ -26,7 +44,7 @@
   </table>
 {/snippet}
 
-<Dialog title="DIFFERENCES" wide {onclose} footer="Restore original loads the original's settings as unsaved changes: they play right away, and Save stores them. Restore last saved discards unsaved changes.">
+<Dialog title="DIFFERENCES" wide {onclose} footer="Restore original loads the original's settings as unsaved changes: they play right away; Save under the current name stores them in this slot. Restore last saved discards unsaved changes.">
   {#if !editor.live}
     <p class="muted">Select a preset first.</p>
   {:else}
@@ -48,6 +66,7 @@
     <section>
       <div class="inline">
         <h3>Unsaved changes</h3>
+        <button class="btn" disabled={!editor.dirty || editor.busy || !editor.online} onclick={save}>Save under the current name</button>
         <button class="btn" disabled={!editor.dirty || editor.busy} onclick={() => editor.revert()}>Restore last saved</button>
       </div>
       {#if !editor.dirty}
@@ -58,6 +77,7 @@
         {@render table(vsSaved, 'Saved', 'Now')}
       {/if}
     </section>
+    {#if message}<p class="message" role="status">{message}</p>{/if}
   {/if}
 </Dialog>
 

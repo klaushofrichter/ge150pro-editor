@@ -347,9 +347,16 @@ class EditorState {
   /** Store the current preset; resolves once the pedal has acknowledged it. */
   async store(name?: string) {
     const dev = this.device;
-    if (!this.live || !dev) return;
+    if (!this.live || (!dev && !this.demo)) return;
     if (name !== undefined) this.live.name = name.slice(0, NAME_LENGTH);
     const index = this.live.index;
+    if (!dev) {
+      // the demo has no pedal: keep the preset here, as a store would
+      this.setPreset(index, this.storable()!);
+      this.expEdited = false;
+      this.dirty = false;
+      return;
+    }
     let ack!: (i: number) => void;
     let timer: ReturnType<typeof setTimeout> | undefined;
     const acked = new Promise<void>((resolve, reject) => {
