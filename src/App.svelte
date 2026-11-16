@@ -25,6 +25,20 @@
   let showSystem = $state(false);
   let showExp = $state(false);
   let showDiff = $state(false);
+  /** What each step of the signal chain does (tooltips on the chain buttons). */
+  const CHAIN_HELP = [
+    'Wah, compressor and other effects that shape the raw guitar signal before any distortion.',
+    'Overdrive, distortion, fuzz and boost pedals, in front of the amp.',
+    'The amp model: its gain and tone stack. Most of the basic sound comes from here.',
+    'The speaker cabinet the amp plays through: a cabinet model or a user IR.',
+    'Noise gate: mutes hiss and hum while you are not playing.',
+    'Equalizer after the amp: fine-tunes the tone of the whole sound.',
+    'Modulation: chorus, phaser, flanger, tremolo, vibrato and similar.',
+    'Delay: echoes of what you play.',
+    'Reverb: the sound of a room, hall or spring, last in the chain.',
+  ];
+  const chainTitle = (slot: number, name: string, on: boolean) =>
+    `${slot + 1} of 9 · ${name}${on ? '' : ' (off)'}: ${CHAIN_HELP[slot] ?? ''} The guitar signal runs through the chain from left to right; click to edit this step.`;
   /** The current preset's mark from its live values, so unsaved changes show at once (a snapshot: originOf caches per object). */
   const liveOrigin = $derived(editor.live ? editor.originOf($state.snapshot(editor.live) as Preset) : null);
   /** Differences worth reviewing: unsaved changes, or another sound than the original preset of the same name. */
@@ -304,11 +318,14 @@
         </h2>
         <ol bind:this={presetList}>
           {#each Array.from({ length: PRESET_COUNT }, (_, k) => k + 1) as i (i)}
-            {@const origin = i === editor.current && editor.dirty && editor.live ? liveOrigin : editor.originOf(editor.presets[i - 1])}
+            {@const unsaved = i === editor.current && editor.dirty}
+            {@const origin = unsaved && editor.live ? liveOrigin : editor.originOf(editor.presets[i - 1])}
+            {@const mTitle = [origin === 'modified' ? 'Modified: the original set has this name with another sound' : '', unsaved ? 'Unsaved changes: differs from the preset stored on the pedal' : ''].filter(Boolean).join('. ')}
             <li>
               <button class:active={i === editor.current} class:unused={origin === 'empty'} disabled={!editor.online} onclick={() => goTo(i)}>
                 {paddedLabel(i)}&nbsp; {editor.presets[i - 1]?.name ?? ''}
-                {#if origin === 'modified'}<span class="mark modified" title="Modified: the original set has this name with another sound">M</span>{:else if origin === 'new'}<span class="mark new" title="New: not in the original set">N</span>{/if}
+                {#if origin === 'new'}<span class="mark new" title="New: not in the original set">N</span>{/if}
+                {#if mTitle}<span class="mark modified" title={mTitle}>M</span>{/if}
               </button>
             </li>
           {/each}
@@ -347,7 +364,7 @@
       <nav class="chain" aria-label="Signal chain">
         {#each catalog.slots as s, slot (slot)}
           {@const on = editor.live?.modules[slot]?.on ?? false}
-          <button class="mod" class:on class:selected={editor.selectedSlot === slot} aria-pressed={editor.selectedSlot === slot} onclick={() => (editor.selectedSlot = slot)}>
+          <button class="mod" class:on class:selected={editor.selectedSlot === slot} aria-pressed={editor.selectedSlot === slot} title={chainTitle(slot, s.name, on)} onclick={() => (editor.selectedSlot = slot)}>
             <span>{s.name.replace('/', ' / ')}</span>
             <ModuleIcon {slot} />
           </button>

@@ -131,6 +131,17 @@ test('an unsaved change marks the preset M at once; Revert takes the mark away',
   await expect(preset(page, '02A').locator('.mark')).toHaveCount(0);
 });
 
+test('the chain buttons explain their step on hover, and a preset with unsaved changes is marked M', async ({ page }) => {
+  await page.goto('./?demo');
+  await preset(page, '03B').click(); // My Tone: new (N), not an original
+  await expect(page.getByRole('button', { name: /^AMP/ })).toHaveAttribute('title', /^3 of 9 · AMP: The amp model/);
+  await expect(preset(page, '03B').locator('.mark')).toHaveText(['N']);
+  await page.getByRole('button', { name: /^AMP/ }).click();
+  await page.locator('.params input[type=range]').first().press('ArrowRight');
+  await expect(preset(page, '03B').locator('.mark')).toHaveText(['N', 'M']);
+  await expect(preset(page, '03B').locator('.mark.modified')).toHaveAttribute('title', /Unsaved changes/);
+});
+
 test('without a pedal (and not in the demo) a warning says so', async ({ page }) => {
   await page.goto('./');
   await expect(page.locator('.pedal-notice')).toContainText('The pedal is not connected.');
