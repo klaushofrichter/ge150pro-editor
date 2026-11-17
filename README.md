@@ -80,6 +80,15 @@ read-only.
   Phones cannot connect and get a short "desktop only" notice instead of the editor (with a way to look anyway).
 - The pedal connected by USB, and Mooer's editor closed: only one program can use the pedal at a time.
 - Tested with firmware V2.1.2.
+- **Linux:** Chrome needs permission to open the pedal, otherwise connecting fails with "Could not open the GE150 Pro".
+  Add a udev rule once, then unplug and replug the pedal:
+
+  ```bash
+  echo 'KERNEL=="hidraw*", ATTRS{idVendor}=="0483", ATTRS{idProduct}=="5703", MODE="0660", TAG+="uaccess"' | sudo tee /etc/udev/rules.d/70-ge150pro.rules
+  sudo udevadm control --reload-rules && sudo udevadm trigger
+  ```
+
+  Use Chrome from google.com (`.deb`/`.rpm`); Flatpak and Snap builds are sandboxed away from USB devices.
 
 ## Good to know
 
