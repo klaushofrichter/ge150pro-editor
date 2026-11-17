@@ -38,6 +38,13 @@ export interface LogEntry {
   bytes: string;
 }
 
+/** Why opening fails: on Linux usually missing permission for the pedal's hidraw device, elsewhere another program. */
+export function openHint(ua = typeof navigator === 'undefined' ? '' : navigator.userAgent): string {
+  const inUse = 'It is probably in use by the official GE150PRO app or another browser tab; close that and connect again.';
+  if (!/Linux/.test(ua) || /Android|CrOS/.test(ua)) return inUse;
+  return 'On Linux this usually means Chrome lacks permission to open the pedal: add the udev rule from the README ("Linux" under Requirements), then unplug and replug the pedal. Otherwise another program or browser tab uses it; close that and connect again.';
+}
+
 class EditorState {
   device: GE150Pro | null = $state(null);
   status: 'disconnected' | 'connecting' | 'loading' | 'ready' | 'error' = $state('disconnected');
@@ -121,9 +128,7 @@ class EditorState {
         await dev.open();
       } catch (e) {
         this.device = null;
-        throw new Error(
-          `Could not open the GE150 Pro (${errorText(e)}). It is probably in use by the official GE150PRO app or another browser tab; close that and connect again.`,
-        );
+        throw new Error(`Could not open the GE150 Pro (${errorText(e)}). ${openHint()}`);
       }
     } catch (e) {
       this.fail(e);
