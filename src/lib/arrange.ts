@@ -188,14 +188,15 @@ export function slotOfFile(file: string): number | null {
   return slot >= 1 && slot <= PRESET_COUNT ? slot : null;
 }
 
+/** "Name.mo": a preset's file name, safe on every file system. */
+export const moFileName = (p: Preset) => `${safeFileName(presetName(p)) || 'preset'}.mo`;
+
 /** One .mo file per filled slot, named "01A Name.mo" so a folder sorts, and imports, in slot order. */
 export function layoutToMoFiles(layout: Layout): { filename: string; json: string }[] {
   const out: { filename: string; json: string }[] = [];
   layout.forEach((p, i) => {
     if (!p) return;
-    const safe = safeFileName(presetName(p)) || 'preset';
-    const label = paddedLabel(i + 1);
-    out.push({ filename: `${label} ${safe}.mo`, json: JSON.stringify(presetToMo(atSlot(p, i + 1)), null, 4) });
+    out.push({ filename: `${paddedLabel(i + 1)} ${moFileName(p)}`, json: JSON.stringify(presetToMo(atSlot(p, i + 1)), null, 4) });
   });
   return out;
 }

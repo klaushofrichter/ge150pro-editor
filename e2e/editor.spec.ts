@@ -1,21 +1,10 @@
-import { expect, test, type Page } from '@playwright/test';
+import { expect, test } from '@playwright/test';
+import { openArrange, preset, returning, slot as slotOf, watchErrors, writeButton } from './helpers';
 import { ACCEPTED_KEY, TERMS_VERSION } from './terms';
-
-/** Console errors and uncaught exceptions on a page; checked at the end of every test. */
-function watchErrors(page: Page) {
-  const errors: string[] = [];
-  page.on('pageerror', (e) => errors.push(String(e)));
-  page.on('console', (m) => m.type() === 'error' && errors.push(m.text()));
-  return errors;
-}
-
-const preset = (page: Page, label: string) => page.locator('.presets li button', { hasText: label });
 
 /** Every test but the first-visit one starts as a returning visitor. */
 test.beforeEach(async ({ page }, info) => {
-  if (!info.title.startsWith('first visit')) {
-    await page.addInitScript(([k, v]) => localStorage.setItem(k, v), [ACCEPTED_KEY, TERMS_VERSION]);
-  }
+  if (!info.title.startsWith('first visit')) await returning(page);
 });
 
 test('first visit: a panel explains the editor and the terms, must be accepted, and the About button shows it again', async ({ page }) => {
@@ -101,16 +90,13 @@ test('the demo shows 200 presets, the effects of the selected one, and the M and
 
 test('arranging: swap by drag and drop, make a slot empty, undo, and write (demo)', async ({ page }) => {
   const errors = watchErrors(page);
-  await page.goto('./?demo');
-  await expect(page.locator('.presets li')).toHaveCount(200);
-  await page.getByRole('button', { name: 'Arrange and back up presets' }).click();
-  const slot = (i: number) => page.locator('.slot').nth(i);
-  await expect(slot(0)).toContainText('Clean 1');
+  await openArrange(page);
+  const slot = (i: number) => slotOf(page, i);
 
   await slot(0).dragTo(slot(5));
   await expect(slot(5)).toContainText('Clean 1');
   await expect(slot(0)).toContainText('Crunch 2');
-  const write = page.getByRole('button', { name: /^Write \d+ changes? to the pedal/ });
+  const write = writeButton(page);
   await expect(write).toHaveText(/Write 2 changes/);
 
   await slot(7).click();

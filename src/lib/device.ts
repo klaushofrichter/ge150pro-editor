@@ -225,6 +225,12 @@ export class GE150Pro {
    * current slot is the only store observed), and wait for the pedal's acknowledgement (`43`).
    */
   async writePreset(p: Preset, timeoutMs = 3000): Promise<void> {
+    await this.selectPreset(p.index);
+    await this.storeConfirmed(p, timeoutMs);
+  }
+
+  /** Store a preset into its slot and wait for the pedal's acknowledgement (`43`). */
+  async storeConfirmed(p: Preset, timeoutMs = 3000): Promise<void> {
     let timer: ReturnType<typeof setTimeout> | undefined;
     let ack!: (i: number) => void;
     const acked = new Promise<void>((resolve, reject) => {
@@ -233,7 +239,6 @@ export class GE150Pro {
     });
     this.on('stored', ack);
     try {
-      await this.selectPreset(p.index);
       await this.storePreset(p);
       await acked;
     } finally {

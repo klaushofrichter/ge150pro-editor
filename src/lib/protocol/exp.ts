@@ -1,6 +1,7 @@
 // Expression pedal assignment, per preset. See docs/protocol/README.md -> Expression pedal.
 import { encodeMessage } from './frame';
 import type { ExpSettings } from './preset';
+import { packU16, u16s } from './bytes';
 
 export const ExpCmd = {
   /** MODULE_CTRL, PARA_CTRL, FUN_SWITCH (u16 LE each). Host 98, device 18. */
@@ -41,25 +42,16 @@ export function expLabel(e: Pick<ExpSettings, 'MODULE_CTRL' | 'PARA_CTRL'>): str
   return mod && para ? `${mod} · ${para.name}` : `${e.MODULE_CTRL} / ${e.PARA_CTRL}`;
 }
 
-const u16s = (p: Uint8Array) => [0, 2, 4].map((o) => p[o] | (p[o + 1] << 8));
-const pack = (vals: number[]) => {
-  const b = new Uint8Array(6);
-  vals.forEach((v, i) => {
-    b[2 * i] = v & 0xff;
-    b[2 * i + 1] = (v >> 8) & 0xff;
-  });
-  return b;
-};
 
 /** Decode a device report (18 or 33) into the part of ExpSettings it carries. */
 export function decodeExpReport(cmd: number, p: Uint8Array): Partial<ExpSettings> | null {
-  const [a, b, c] = u16s(p);
+  const [a, b, c] = u16s(p, 3);
   if (cmd === ExpCmd.FUNCTION) return { MODULE_CTRL: a, PARA_CTRL: b, FUN_SWITCH: c };
   if (cmd === ExpCmd.VOLUME) return { VOL_SWITCH: a, VOL_MIN: b, VOL_MAX: c };
   return null;
 }
 
 export const setExpFunction = (e: ExpSettings) =>
-  encodeMessage(ExpCmd.SET_FUNCTION, pack([e.MODULE_CTRL, e.PARA_CTRL, e.FUN_SWITCH]));
+  encodeMessage(ExpCmd.SET_FUNCTION, packU16(e.MODULE_CTRL, e.PARA_CTRL, e.FUN_SWITCH));
 export const setExpVolume = (e: ExpSettings) =>
-  encodeMessage(ExpCmd.SET_VOLUME, pack([e.VOL_SWITCH, e.VOL_MIN, e.VOL_MAX]));
+  encodeMessage(ExpCmd.SET_VOLUME, packU16(e.VOL_SWITCH, e.VOL_MIN, e.VOL_MAX));
