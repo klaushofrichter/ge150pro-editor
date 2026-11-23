@@ -56,7 +56,6 @@ export function formatEq(p: EqParam, raw: number): string {
   return `${p.step < 1 ? v.toFixed(1) : v} ${p.unit}`;
 }
 
-
 export const SysCmd = {
   // device -> host (connect sequence)
   SYSTEM: 0x32,

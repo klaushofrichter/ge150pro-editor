@@ -160,18 +160,27 @@
   }
 
   // ---- backups ---------------------------------------------------------------------------------------------------
-  async function backUpPedal() {
-    await saveBackup({ name: 'Pedal', source: 'pedal', locked: false, layout: pedal });
+  /** Save a backup to this browser; false (with the reason in the message) when it has no storage for it. */
+  async function keep(b: Parameters<typeof saveBackup>[0]) {
+    try {
+      await saveBackup(b);
+    } catch (err) {
+      message = `The backup was not saved: ${errorText(err)}`;
+      return false;
+    }
     await refresh();
-    message = 'Saved a backup of the pedal.';
+    return true;
+  }
+
+  async function backUpPedal() {
+    if (await keep({ name: 'Pedal', source: 'pedal', locked: false, layout: pedal })) message = 'Saved a backup of the pedal.';
   }
 
   async function saveArrangement() {
     if (!isComplete(layout)) return;
     const name = prompt('Name of this backup:', 'My arrangement')?.trim();
     if (!name) return;
-    await saveBackup({ name, source: 'file', locked: false, layout });
-    await refresh();
+    await keep({ name, source: 'file', locked: false, layout });
   }
 
   function download(b: { name: string; created: string; layout: Layout }) {
@@ -257,10 +266,6 @@
     message = `The factory presets (firmware ${got.version}) are now the locked original at the top of the backups. Click Show to see them in the grid.`;
   }
 
-  /**
-   * A folder of .mo files: placed by its manifest.json when it has one (checking every file against it), else by
-   * slot-named files ("01A …"), else by name (factory order when the original exists, else the pedal's names).
-   */
   /** A folder the user picks; null when cancelled or refused (the reason goes to the message). */
   async function pickDir(...args: Parameters<typeof pickDirectory>) {
     try {
@@ -270,6 +275,11 @@
       return null;
     }
   }
+
+  /**
+   * A folder of .mo files: placed by its manifest.json when it has one (checking every file against it), else by
+   * slot-named files ("01A …"), else by name (factory order when the original exists, else the pedal's names).
+   */
 
   async function importMoFolder() {
     const dir = await pickDir('ge150-mo-backup');

@@ -42,7 +42,6 @@ export function expLabel(e: Pick<ExpSettings, 'MODULE_CTRL' | 'PARA_CTRL'>): str
   return mod && para ? `${mod} · ${para.name}` : `${e.MODULE_CTRL} / ${e.PARA_CTRL}`;
 }
 
-
 /** Decode a device report (18 or 33) into the part of ExpSettings it carries. */
 export function decodeExpReport(cmd: number, p: Uint8Array): Partial<ExpSettings> | null {
   const [a, b, c] = u16s(p, 3);

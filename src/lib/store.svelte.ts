@@ -198,17 +198,6 @@ class EditorState {
       this.live.modules[slot] = m;
       this.markDirtyIfChanged();
     });
-    dev.on('stored', (index) => {
-      const kept = this.storable();
-      if (kept && kept.index === index) {
-        const live = $state.snapshot(this.live) as Preset;
-        this.commitStored(kept);
-        // Storing also loads the stored values into the sound (observed 2026-11-14): put back the value the expression
-        // pedal had set, so the sound stays where the foot is
-        const moved = kept.modules.findIndex((m, s) => m !== live.modules[s] && m.values.some((v, i) => v !== live.modules[s].values[i]));
-        if (moved >= 0) dev.setModule(moved, live.modules[moved]);
-      }
-    });
     dev.on('message', (m: Message, dir) => {
       const bytes = [...m.payload.slice(0, 24)].map((b) => b.toString(16).padStart(2, '0')).join(' ');
       this.log = [{ seq: ++this.logSeq, t: Date.now(), dir, cmd: m.cmd, bytes }, ...this.log.slice(0, 199)];
@@ -350,15 +339,28 @@ class EditorState {
     const dev = this.device;
     if (!this.live || (!dev && !this.demo)) return;
     if (name !== undefined) this.live.name = name.slice(0, NAME_LENGTH);
-    if (dev) await dev.storeConfirmed(this.storable()!); // the 'stored' handler commits it
-    else this.commitStored(this.storable()!); // the demo has no pedal: keep the preset here, as a store would
+    const sent = this.storable()!;
+    if (dev) await dev.storeConfirmed(sent); // (the demo has no pedal: keep the preset here, as a store would)
+    this.commitStored(sent);
   }
 
-  /** A stored preset becomes the saved copy of its slot; the live state has no unsaved changes left. */
+  /**
+   * `p` is stored: the saved copy of its slot. If it is still the live preset and nothing was edited since it was
+   * sent, nothing is unsaved. Storing also loads the stored values into the sound (observed 2026-11-14): send back what
+   * differs in the live state (the expression pedal's value, edits made meanwhile), so the sound stays as shown.
+   */
   private commitStored(p: Preset) {
     this.setPreset(p.index, p);
-    this.expEdited = false;
-    this.dirty = false;
+    if (!this.live || this.live.index !== p.index) return;
+    const sig = (x: Preset) => JSON.stringify([x.name, x.modules, x.exp]);
+    if (sig(this.storable()!) === sig(p)) {
+      this.expEdited = false;
+      this.dirty = false;
+    }
+    const live = $state.snapshot(this.live) as Preset;
+    live.modules.forEach((m, s) => {
+      if (m.values.some((v, i) => v !== p.modules[s].values[i])) this.device?.setModule(s, m);
+    });
   }
 
   async rename(name: string) {
