@@ -8,7 +8,7 @@
   import { sameSound } from './lib/arrange';
   import Dialog from './components/Dialog.svelte';
   import ArrangeDialog from './components/ArrangeDialog.svelte';
-  import WelcomeDialog, { termsAccepted } from './components/WelcomeDialog.svelte';
+  import WelcomeDialog, { firstInSession, termsAccepted } from './components/WelcomeDialog.svelte';
   import DesktopOnly, { isPhone } from './components/DesktopOnly.svelte';
   import Toggle from './components/Toggle.svelte';
   import { catalog, expTarget, rawFraction } from './lib/catalog';
@@ -74,10 +74,13 @@
     start();
   });
 
-  function start() {
+  async function start() {
     editor.loadOriginal();
-    if (new URLSearchParams(location.search).has('demo')) editor.loadDemo();
-    else if (supported) editor.connect(true);
+    if (new URLSearchParams(location.search).has('demo')) return editor.loadDemo();
+    if (supported) await editor.connect(true);
+    // no pedal at the start of a browser session: the About panel says what this is and what to do (the first-visit
+    // panel, when it shows, counts as that)
+    if (!editor.device && firstInSession() && !showWelcome) showAbout();
   }
 
   function showAnyway() {

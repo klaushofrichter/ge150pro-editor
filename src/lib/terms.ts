@@ -8,6 +8,9 @@ export const TERMS_VERSION = /Version (\d{4}-\d{2}-\d{2})/.exec(terms)?.[1] ?? '
 /** localStorage key: the terms version the visitor accepted. */
 export const ACCEPTED_KEY = 'ge150pro-editor.terms-accepted';
 
+/** sessionStorage key: the About panel was shown in this browser session because no pedal was connected. */
+export const INFO_SHOWN_KEY = 'ge150pro-editor.info-shown';
+
 const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 
 function inline(text: string): string {

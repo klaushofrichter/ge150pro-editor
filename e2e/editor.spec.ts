@@ -40,6 +40,27 @@ test('first visit: a panel explains the editor and the terms, must be accepted, 
   expect(errors).toEqual([]);
 });
 
+test('first visit in a browser session without a pedal: the About panel opens, closes, and stays closed on a reload', async ({ page }) => {
+  const errors = watchErrors(page);
+  await page.addInitScript(([k, v]) => localStorage.setItem(k, v), [ACCEPTED_KEY, TERMS_VERSION]);
+  await page.goto('./');
+  const panel = page.getByRole('dialog', { name: 'GE150 Pro Editor' });
+  await expect(panel).toBeVisible();
+  await panel.getByRole('button', { name: 'Close' }).click();
+  await expect(panel).toBeHidden();
+  await page.reload();
+  await expect(page.getByRole('link', { name: 'Try the demo' }).first()).toBeVisible();
+  await expect(panel).toBeHidden();
+  expect(errors).toEqual([]);
+});
+
+test('first visit in a browser session with the demo: no About panel', async ({ page }) => {
+  await page.addInitScript(([k, v]) => localStorage.setItem(k, v), [ACCEPTED_KEY, TERMS_VERSION]);
+  await page.goto('./?demo');
+  await expect(page.locator('.presets li')).toHaveCount(200);
+  await expect(page.getByRole('dialog', { name: 'GE150 Pro Editor' })).toBeHidden();
+});
+
 test('first visit after the terms changed: the panel shows again', async ({ page }) => {
   await page.addInitScript((k) => localStorage.setItem(k, '2000-01-01'), ACCEPTED_KEY);
   await page.goto('./');
