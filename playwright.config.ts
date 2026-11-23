@@ -1,7 +1,7 @@
 import { defineConfig, devices } from '@playwright/test';
 
-// The built app (as GitHub Pages serves it) in demo mode: no pedal needed. `npm run screenshots` renders the
-// README's screenshots into docs/screenshots/.
+// The built app (as GitHub Pages serves it), in demo mode or against the simulated pedal (e2e/fake-pedal.ts): no pedal
+// needed. `npm run screenshots` renders the README's screenshots into docs/screenshots/.
 export default defineConfig({
   testDir: 'e2e',
   fullyParallel: true,
@@ -15,7 +15,7 @@ export default defineConfig({
     reuseExistingServer: !process.env.CI,
   },
   projects: [
-    { name: 'e2e', testMatch: /(editor|editing|arrange)\.spec\.ts/, use: { ...devices['Desktop Chrome'], viewport: { width: 1440, height: 900 } } },
+    { name: 'e2e', testMatch: /(editor|editing|arrange|pedal)\.spec\.ts/, use: { ...devices['Desktop Chrome'], viewport: { width: 1440, height: 900 } } },
     { name: 'phone', testMatch: /phone\.spec\.ts/, use: { ...devices['Pixel 7'] } },
     { name: 'screenshots', testMatch: /screenshots\.spec\.ts/, use: { ...devices['Desktop Chrome'], viewport: { width: 1920, height: 1080 } } },
   ],

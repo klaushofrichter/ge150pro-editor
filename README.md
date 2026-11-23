@@ -114,7 +114,7 @@ npm ci
 npm run dev           # http://localhost:5173 (add ?demo for the demo)
 npm test              # unit tests
 npm run check         # type check
-npm run e2e           # browser tests on the built app (demo mode)
+npm run e2e           # browser tests on the built app (demo mode, and a simulated pedal: e2e/fake-pedal.ts)
 npm run screenshots   # renders docs/screenshots/
 ```
 
