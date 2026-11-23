@@ -2,4 +2,5 @@
 import { readFileSync } from 'node:fs';
 
 export const ACCEPTED_KEY = 'ge150pro-editor.terms-accepted';
+export const INFO_SHOWN_KEY = 'ge150pro-editor.info-shown';
 export const TERMS_VERSION = /Version (\d{4}-\d{2}-\d{2})/.exec(readFileSync('TERMS.md', 'utf8'))![1];
