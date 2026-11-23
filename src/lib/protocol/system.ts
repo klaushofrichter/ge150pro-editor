@@ -1,5 +1,6 @@
 // System settings, as observed between the official editor and the pedal. See docs/protocol.md.
 import { encodeMessage } from './frame';
+import { packU16, u16s } from './bytes';
 
 /** Level labels for INPUT LEVEL and OTG LEVEL, indexed by raw value . */
 export const LEVEL_LABELS = [
@@ -55,16 +56,6 @@ export function formatEq(p: EqParam, raw: number): string {
   return `${p.step < 1 ? v.toFixed(1) : v} ${p.unit}`;
 }
 
-const u16s = (b: Uint8Array, n: number) => Array.from({ length: n }, (_, i) => b[2 * i] | (b[2 * i + 1] << 8));
-const pack = (...vals: number[]) => {
-  const b = new Uint8Array(vals.length * 2);
-  vals.forEach((v, i) => {
-    b[2 * i] = v & 0xff;
-    b[2 * i + 1] = (v >> 8) & 0xff;
-  });
-  return b;
-};
-
 export const SysCmd = {
   // device -> host (connect sequence)
   SYSTEM: 0x32,
@@ -116,10 +107,10 @@ export function decodeSystemChange(cmd: number, p: Uint8Array): Partial<SystemSe
   }
 }
 
-export const setInputLevel = (raw: number) => encodeMessage(SysCmd.SET_INPUT_LEVEL, pack(raw));
-export const setBrightness = (v: number) => encodeMessage(SysCmd.SET_BRIGHTNESS, pack(v));
-export const setCabOut = (left: boolean, right: boolean) => encodeMessage(SysCmd.SET_CAB_OUT, pack(+left, +right));
-export const setOtgLevel = (raw: number) => encodeMessage(SysCmd.SET_OTG_LEVEL, pack(raw));
-export const setLanguage = (lang: number) => encodeMessage(SysCmd.SET_LANGUAGE, pack(lang));
-export const setGlobalEq = (eq: GlobalEq) => encodeMessage(SysCmd.SET_GLOBAL_EQ, pack(+eq.on, ...eq.values.slice(0, 8)));
-export const setSpillOver = (on: boolean) => encodeMessage(SysCmd.SET_SPILL_OVER, pack(+on));
+export const setInputLevel = (raw: number) => encodeMessage(SysCmd.SET_INPUT_LEVEL, packU16(raw));
+export const setBrightness = (v: number) => encodeMessage(SysCmd.SET_BRIGHTNESS, packU16(v));
+export const setCabOut = (left: boolean, right: boolean) => encodeMessage(SysCmd.SET_CAB_OUT, packU16(+left, +right));
+export const setOtgLevel = (raw: number) => encodeMessage(SysCmd.SET_OTG_LEVEL, packU16(raw));
+export const setLanguage = (lang: number) => encodeMessage(SysCmd.SET_LANGUAGE, packU16(lang));
+export const setGlobalEq = (eq: GlobalEq) => encodeMessage(SysCmd.SET_GLOBAL_EQ, packU16(+eq.on, ...eq.values.slice(0, 8)));
+export const setSpillOver = (on: boolean) => encodeMessage(SysCmd.SET_SPILL_OVER, packU16(+on));

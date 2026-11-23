@@ -20,7 +20,7 @@
   /** Presets waiting for a slot (from .mo files no slot took, or pushed out by a tray drop). */
   let tray: TrayItem[] = $state([]);
   let showing = $state('the pedal');
-  let backups: Backup[] = $state([]);
+  let backups: Backup[] = $state.raw([]);
   let message = $state('');
   let confirming = $state(false);
   let dragOver = $state('');
@@ -160,18 +160,27 @@
   }
 
   // ---- backups ---------------------------------------------------------------------------------------------------
-  async function backUpPedal() {
-    await saveBackup({ name: 'Pedal', source: 'pedal', locked: false, layout: pedal });
+  /** Save a backup to this browser; false (with the reason in the message) when it has no storage for it. */
+  async function keep(b: Parameters<typeof saveBackup>[0]) {
+    try {
+      await saveBackup(b);
+    } catch (err) {
+      message = `The backup was not saved: ${errorText(err)}`;
+      return false;
+    }
     await refresh();
-    message = 'Saved a backup of the pedal.';
+    return true;
+  }
+
+  async function backUpPedal() {
+    if (await keep({ name: 'Pedal', source: 'pedal', locked: false, layout: pedal })) message = 'Saved a backup of the pedal.';
   }
 
   async function saveArrangement() {
     if (!isComplete(layout)) return;
     const name = prompt('Name of this backup:', 'My arrangement')?.trim();
     if (!name) return;
-    await saveBackup({ name, source: 'file', locked: false, layout: $state.snapshot(layout) as Layout });
-    await refresh();
+    await keep({ name, source: 'file', locked: false, layout });
   }
 
   function download(b: { name: string; created: string; layout: Layout }) {
@@ -184,7 +193,7 @@
    */
   async function exportMoFiles(b: Backup) {
     const original = b.source === 'factory';
-    const files = await moSet($state.snapshot(b.layout) as Layout, {
+    const files = await moSet(b.layout, {
       name: b.name,
       kind: original ? 'original' : 'backup',
       immutable: b.locked,
@@ -193,13 +202,7 @@
         : `A backup of GE150 Pro presets (${b.source}), saved ${b.created}.`,
       source: original ? { type: 'firmware', from: b.name } : { type: b.source, saved: b.created },
     });
-    let dir: FileSystemDirectoryHandle | null;
-    try {
-      dir = await pickDirectory('ge150-mo-export', 'readwrite');
-    } catch (err) {
-      message = errorText(err);
-      return;
-    }
+    const dir = await pickDir('ge150-mo-export', 'readwrite');
     if (!dir) return;
     const exists = await Promise.all(files.map((f) => dir.getFileHandle(f.filename).then(() => true, () => false)));
     const taken = files.filter((_, k) => exists[k]).map((f) => f.filename);
@@ -263,18 +266,23 @@
     message = `The factory presets (firmware ${got.version}) are now the locked original at the top of the backups. Click Show to see them in the grid.`;
   }
 
+  /** A folder the user picks; null when cancelled or refused (the reason goes to the message). */
+  async function pickDir(...args: Parameters<typeof pickDirectory>) {
+    try {
+      return await pickDirectory(...args);
+    } catch (err) {
+      message = errorText(err);
+      return null;
+    }
+  }
+
   /**
    * A folder of .mo files: placed by its manifest.json when it has one (checking every file against it), else by
    * slot-named files ("01A …"), else by name (factory order when the original exists, else the pedal's names).
    */
+
   async function importMoFolder() {
-    let dir: FileSystemDirectoryHandle | null;
-    try {
-      dir = await pickDirectory('ge150-mo-backup');
-    } catch (err) {
-      message = errorText(err);
-      return;
-    }
+    const dir = await pickDir('ge150-mo-backup');
     if (!dir) return;
     const texts = new Map<string, string>();
     for await (const f of dirFiles(dir)) {
@@ -319,7 +327,7 @@
 
   async function write() {
     confirming = false;
-    await editor.writeLayout($state.snapshot(layout) as Layout);
+    await editor.writeLayout(layout);
     await refresh();
     // after a failed or stopped write the arrangement stays (what is left to write shows as changes, Undo works)
     if (editor.writing?.phase !== 'done') return;
@@ -451,7 +459,7 @@
             <div class="bname">{b.locked ? '🔒 ' : ''}{b.name}</div>
             <div class="muted small">{fmt(b.created)} · {b.source === 'factory' ? 'factory set, cannot be changed' : b.source}</div>
             <div class="row">
-              <button class="btn sm" disabled={editor.busy} onclick={() => show($state.snapshot(b.layout) as Layout, `the backup "${b.name}"`)}>Show</button>
+              <button class="btn sm" disabled={editor.busy} onclick={() => show(b.layout, `the backup "${b.name}"`)}>Show</button>
               <button class="btn sm" onclick={() => download(b)}>Export</button>
               <button class="btn sm" disabled={!folderSupported()} title="One .mo file per slot, named 01A …, into an empty folder" onclick={() => exportMoFiles(b)}>Export .mo files</button>
               <button class="btn sm" disabled={b.locked || editor.busy} onclick={() => remove(b)}>Delete</button>

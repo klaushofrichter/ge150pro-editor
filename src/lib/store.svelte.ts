@@ -6,7 +6,7 @@ import type { Message } from './protocol/frame';
 import type { GlobalEq, SystemSettings } from './protocol/system';
 import type { Rhythm } from './protocol/rhythm';
 import { runSelfTest, type CheckResult } from './selftest';
-import { atSlot, backupFileName, changedSlots, trimName, layoutToFile, originsFrom, samePreset, type Layout, type Origin } from './arrange';
+import { atSlot, backupFileName, changedSlots, trimName, layoutToFile, moFileName, originsFrom, samePreset, type Layout, type Origin } from './arrange';
 import { dirFiles, errorText, pickDirectory } from './files';
 import { expTarget } from './catalog';
 import { turnedOnPedal, withoutPedalMove } from './exp';
@@ -90,9 +90,9 @@ class EditorState {
 
   /** A write of an arrangement to the pedal: its progress, or null when none ran. */
   writing: WriteProgress | null = $state(null);
-  /** The locked original backup (the factory set), if this browser has one; set it with setOriginal(). */
+  /** The locked original backup (the factory set), if this browser has one. */
   original: Layout | null = $state.raw(null);
-  private origins = $state.raw(originsFrom(null));
+  private origins = $derived(originsFrom(this.original));
   private stopWriting = false;
 
   /** A pedal is connected, or the demo runs. */
@@ -141,7 +141,7 @@ class EditorState {
     const presets = demoPresets();
     // the demo's own "original": the generated set; two presets differ from it, to show the M and N marks
     this.demo = true;
-    this.setOriginal(structuredClone(presets));
+    this.original = structuredClone(presets);
     presets[5].modules[2] = { ...presets[5].modules[2], values: presets[5].modules[2].values.map((v, k) => (k === 0 ? Math.max(0, v - 7) : v)) };
     presets[9] = { ...presets[9], name: 'My Tone' };
     this.presets = presets;
@@ -198,19 +198,6 @@ class EditorState {
       this.live.modules[slot] = m;
       this.markDirtyIfChanged();
     });
-    dev.on('stored', (index) => {
-      const kept = this.storable();
-      if (kept && kept.index === index) {
-        const live = $state.snapshot(this.live) as Preset;
-        this.setPreset(index, kept);
-        this.expEdited = false;
-        this.dirty = false;
-        // Storing also loads the stored values into the sound (observed 2026-11-14): put back the value the expression
-        // pedal had set, so the sound stays where the foot is
-        const moved = kept.modules.findIndex((m, s) => m !== live.modules[s] && m.values.some((v, i) => v !== live.modules[s].values[i]));
-        if (moved >= 0) dev.setModule(moved, live.modules[moved]);
-      }
-    });
     dev.on('message', (m: Message, dir) => {
       const bytes = [...m.payload.slice(0, 24)].map((b) => b.toString(16).padStart(2, '0')).join(' ');
       this.log = [{ seq: ++this.logSeq, t: Date.now(), dir, cmd: m.cmd, bytes }, ...this.log.slice(0, 199)];
@@ -244,9 +231,7 @@ class EditorState {
    * uses once per connection.
    */
   private pedalControlsUsed(what: string, always = false) {
-    const writing = this.writing && ['backup', 'writing', 'verifying'].includes(this.writing.phase);
-    if (!always && (this.status !== 'ready' || writing || performance.now() < this.quietUntil)) return;
-    if (!always && this.pedalWarned) return;
+    if (!always && (this.status !== 'ready' || this.busy || performance.now() < this.quietUntil || this.pedalWarned)) return;
     this.pedalWarned = true;
     this.pedalNotice = `${what} ${PEDAL_ADVICE}`;
   }
@@ -354,28 +339,28 @@ class EditorState {
     const dev = this.device;
     if (!this.live || (!dev && !this.demo)) return;
     if (name !== undefined) this.live.name = name.slice(0, NAME_LENGTH);
-    const index = this.live.index;
-    if (!dev) {
-      // the demo has no pedal: keep the preset here, as a store would
-      this.setPreset(index, this.storable()!);
+    const sent = this.storable()!;
+    if (dev) await dev.storeConfirmed(sent); // (the demo has no pedal: keep the preset here, as a store would)
+    this.commitStored(sent);
+  }
+
+  /**
+   * `p` is stored: the saved copy of its slot. If it is still the live preset and nothing was edited since it was
+   * sent, nothing is unsaved. Storing also loads the stored values into the sound (observed 2026-11-14): send back what
+   * differs in the live state (the expression pedal's value, edits made meanwhile), so the sound stays as shown.
+   */
+  private commitStored(p: Preset) {
+    this.setPreset(p.index, p);
+    if (!this.live || this.live.index !== p.index) return;
+    const sig = (x: Preset) => JSON.stringify([x.name, x.modules, x.exp]);
+    if (sig(this.storable()!) === sig(p)) {
       this.expEdited = false;
       this.dirty = false;
-      return;
     }
-    let ack!: (i: number) => void;
-    let timer: ReturnType<typeof setTimeout> | undefined;
-    const acked = new Promise<void>((resolve, reject) => {
-      ack = (i) => i === index && resolve();
-      timer = setTimeout(() => reject(new Error('the pedal did not acknowledge it')), 3000);
+    const live = $state.snapshot(this.live) as Preset;
+    live.modules.forEach((m, s) => {
+      if (m.values.some((v, i) => v !== p.modules[s].values[i])) this.device?.setModule(s, m);
     });
-    dev.on('stored', ack);
-    try {
-      await dev.storePreset(this.storable()!);
-      await acked;
-    } finally {
-      clearTimeout(timer);
-      dev.off('stored', ack);
-    }
   }
 
   async rename(name: string) {
@@ -391,7 +376,7 @@ class EditorState {
     const p = this.storable();
     if (!p) return null;
     const mo = presetToMo(p);
-    return { filename: `${p.name || 'preset'}.mo`, json: JSON.stringify(mo, null, 4) };
+    return { filename: moFileName(p), json: JSON.stringify(mo, null, 4) };
   }
 
   /** Load a .mo file into the current slot as live (unsaved) edits and send it to the device. */
@@ -496,12 +481,7 @@ class EditorState {
     } catch {
       // no IndexedDB (private window): no original
     }
-    if (!this.demo) this.setOriginal(original); // the demo brings its own
-  }
-
-  private setOriginal(original: Layout | null) {
-    this.original = original;
-    this.origins = originsFrom(original);
+    if (!this.demo) this.original = original; // the demo brings its own
   }
 
   /** How a preset relates to the original set: empty, original, modified or new (null without an original). */
