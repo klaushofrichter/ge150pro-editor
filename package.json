@@ -18,11 +18,11 @@
     "@sveltejs/vite-plugin-svelte": "^7.3.1",
     "@types/w3c-web-hid": "^1.0.7",
     "@typescript/native": "npm:typescript@^7.0.2",
-    "svelte": "^5.57.3",
+    "svelte": "^5.58.1",
     "svelte-check": "^4.7.8",
     "typescript": "^6.0.3",
     "vite": "^8.3.8",
-    "vitest": "^5.1.0"
+    "vitest": "^5.1.1"
   },
   "description": "A browser editor for the Mooer GE150 Pro: presets, effects, expression pedal, system settings, arranging, backups. Unofficial."
 }
