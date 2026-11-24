@@ -133,3 +133,11 @@ test("writing an arrangement stores each changed slot, then reads every preset b
   expect(name(await pedal<number[]>(page, "state.presets[4]"))).toBe("Clean 1");
   expect(errors).toEqual([]);
 });
+
+test("a new browser session with the pedal connected opens no About panel", async ({ page }) => {
+  await page.addInitScript(() => sessionStorage.clear()); // a new session (after the returning visitor's init)
+  await fakePedal(page);
+  await page.goto("./");
+  await expect(page.locator(".presets li")).toHaveCount(200);
+  await expect(page.getByRole("dialog", { name: "GE150 Pro Editor" })).toBeHidden();
+});

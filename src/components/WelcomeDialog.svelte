@@ -2,7 +2,7 @@
   // Shown on the first visit, and again after the terms of use change; closed only by accepting them. The accepted
   // terms version is remembered in this browser (localStorage); when storage is not available (some private windows)
   // the panel simply shows again next time. Opened from the About button, it closes like any dialog.
-  import { ACCEPTED_KEY, TERMS_VERSION } from '../lib/terms';
+  import { ACCEPTED_KEY, INFO_SHOWN_KEY, TERMS_VERSION } from '../lib/terms';
 
   export function termsAccepted(): boolean {
     try {
@@ -10,6 +10,17 @@
     } catch {
       return false;
     }
+  }
+
+  /** True the first time it is asked in a browser session (a new tab or window), then false. */
+  export function firstInSession(): boolean {
+    try {
+      if (sessionStorage.getItem(INFO_SHOWN_KEY)) return false;
+      sessionStorage.setItem(INFO_SHOWN_KEY, '1');
+    } catch {
+      // no storage: shown on every load
+    }
+    return true;
   }
 
   function remember() {
