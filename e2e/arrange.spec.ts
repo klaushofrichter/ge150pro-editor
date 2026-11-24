@@ -89,3 +89,69 @@ test('backups: save one, export it, import it back, and delete both', async ({ p
   await expect(page.locator('.backups')).toContainText('No backups yet.');
   expect(errors).toEqual([]);
 });
+
+test('a bank dropped anywhere on another bank swaps the two; the target has a frame while dragging', async ({ page }) => {
+  const errors = watchErrors(page);
+  await openArrange(page);
+  const bank = (b: number) => page.locator('.bank').nth(b);
+  await page.locator('.bank-title').nth(1).hover();
+  await page.mouse.down();
+  await slot(page, 14).hover(); // bank 4, its C slot
+  await slot(page, 14).hover({ position: { x: 30, y: 6 } });
+  await expect(bank(3)).toHaveClass(/target/);
+  await expect(slot(page, 14)).not.toHaveClass(/target/);
+  await expect(bank(1)).toHaveClass(/dragged/);
+  await page.mouse.up();
+  await expect(slot(page, 12)).toContainText('Clean 2');
+  await expect(slot(page, 4)).toContainText('Clean 4');
+  await expect(page.locator('.bank.target')).toHaveCount(0);
+  await page.getByRole('button', { name: 'Undo' }).click();
+  await expect(slot(page, 4)).toContainText('Clean 2');
+  expect(errors).toEqual([]);
+});
+
+test('a preset is grabbed by its name and swaps with the preset it is dropped on, in its bank or another', async ({ page }) => {
+  await openArrange(page);
+  await expect(slot(page, 0)).not.toHaveAttribute('draggable', 'true');
+  await expect(slot(page, 0).locator('.name')).toHaveAttribute('draggable', 'true');
+  // inside the bank
+  await slot(page, 0).locator('.name').dragTo(slot(page, 3));
+  await expect(slot(page, 0)).toContainText('Lead 1');
+  await expect(slot(page, 3)).toContainText('Clean 1');
+  // to another bank, with the frame on the slot under the pointer
+  await slot(page, 1).locator('.name').hover();
+  await page.mouse.down();
+  await slot(page, 22).hover();
+  await slot(page, 22).hover({ position: { x: 40, y: 6 } });
+  await expect(slot(page, 22)).toHaveClass(/target/);
+  await page.mouse.up();
+  await expect(slot(page, 22)).toContainText('Crunch 1');
+  await expect(slot(page, 1)).toContainText('Drive 6');
+  await expect(writeButton(page)).toHaveText(/Write 4 changes/);
+  await page.getByRole('button', { name: 'Undo' }).click();
+  await page.getByRole('button', { name: 'Undo' }).click();
+  await expect(writeButton(page)).toHaveText(/Write 0 changes/);
+});
+
+test('dragging to the bottom edge scrolls the list, so a bank far down can be reached', async ({ page }) => {
+  await openArrange(page);
+  const banks = page.locator('.banks');
+  const box = (await banks.boundingBox())!;
+  await page.locator('.bank-title').nth(0).hover();
+  await page.mouse.down();
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height - 20, { steps: 4 });
+  // keep the pointer there (the browser repeats dragover while it rests) until the list has reached its end
+  await expect
+    .poll(async () => {
+      await page.mouse.move(box.x + box.width / 2 + 1, box.y + box.height - 20);
+      await page.mouse.move(box.x + box.width / 2, box.y + box.height - 20);
+      return banks.evaluate((el) => el.scrollTop + el.clientHeight >= el.scrollHeight - 2);
+    }, { timeout: 15000 })
+    .toBe(true);
+  await page.locator('.bank-title').nth(49).hover();
+  await page.locator('.bank-title').nth(49).hover({ position: { x: 20, y: 5 } });
+  await expect(page.locator('.bank').nth(49)).toHaveClass(/target/);
+  await page.mouse.up();
+  await expect(slot(page, 196)).toContainText('Clean 1');
+  await expect(slot(page, 0)).toContainText('Clean 50');
+});

@@ -84,6 +84,11 @@ test("the factory presets come from Mooer's download: the Arrange dialog takes .
   await page.getByRole('button', { name: 'Arrange and back up presets' }).click();
   const input = page.locator('input[type=file][accept=".zip,.dmg,.mr"]');
   await expect(input).toHaveCount(1);
+  // where to get it: Mooer's download page, and Mooer's home page in case that link moved
+  const hint = page.locator('.download-hint');
+  await expect(hint.getByRole('link', { name: "Mooer's download page" })).toHaveAttribute('href', 'https://www.mooeraudio.com/Downloads_xq/6.html');
+  await expect(hint.getByRole('link', { name: 'mooeraudio.com' })).toHaveAttribute('href', 'https://www.mooeraudio.com');
+  await expect(hint.getByRole('link', { name: 'mooeraudio.com' })).toHaveAttribute('target', '_blank');
   await input.setInputFiles({ name: 'something.zip', mimeType: 'application/zip', buffer: Buffer.from('PK\u0003\u0004 not really a zip') });
   await expect(page.locator('.message')).toContainText('the factory presets were not found in this file');
 });

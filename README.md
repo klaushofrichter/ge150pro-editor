@@ -35,8 +35,9 @@ only to describe what the pedal does.
 
 ![Arranging: swapped presets and banks are highlighted, M and N mark presets that differ from the original set](docs/screenshots/arrange.png)
 
-- **Arrange** the 200 slots on one screen: drag a preset onto another to swap them, drag a bank's title to swap whole
-  banks. Click a slot to **make it empty**, **duplicate** the preset into another slot under a new name (or
+- **Arrange** the 200 slots on one screen: drag a preset by its name onto another to swap them, drag a bank by its
+  title onto another bank to swap whole banks (Undo takes either back; a thin frame shows where it lands, and the list
+  scrolls at its top and bottom edge). Click a slot to **make it empty**, **duplicate** the preset into another slot under a new name (or
   Option-drag it), **rename** it, or **replace it with a `.mo` file**, for example one downloaded from elsewhere (pick
   it, or drop it from the Finder onto the slot). Every change is pending, highlighted and can be undone.
 - **Write** the changed slots to the pedal: after a warning, the editor saves a backup of the pedal, writes each slot
@@ -56,7 +57,8 @@ only to describe what the pedal does.
 
 They come with Mooer's own editor download; this repository contains no firmware and nothing taken from it.
 
-1. On [Mooer's download page](https://www.mooeraudio.com/Downloads_xq/6.html), download the GE150 Pro package **for
+1. On [Mooer's download page](https://www.mooeraudio.com/Downloads_xq/6.html) (if that link moved, start at
+   [mooeraudio.com](https://www.mooeraudio.com)), download the GE150 Pro package **for
    Mac** (a `.zip`). It works on any computer: nothing gets installed, the editor only reads the file.
 2. In the editor, open **Arrange and back up presets** (the grid icon next to PRESET) and, under **Backups**, choose
    **Read the factory presets from Mooer's download**, then the `.zip`.
