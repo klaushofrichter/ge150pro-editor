@@ -89,6 +89,7 @@ test("the factory presets come from Mooer's download: the Arrange dialog takes .
   await expect(hint.getByRole('link', { name: "Mooer's download page" })).toHaveAttribute('href', 'https://www.mooeraudio.com/Downloads_xq/6.html');
   await expect(hint.getByRole('link', { name: 'mooeraudio.com' })).toHaveAttribute('href', 'https://www.mooeraudio.com');
   await expect(hint.getByRole('link', { name: 'mooeraudio.com' })).toHaveAttribute('target', '_blank');
+  await expect(hint).toContainText("This editor does not update the pedal's firmware");
   await input.setInputFiles({ name: 'something.zip', mimeType: 'application/zip', buffer: Buffer.from('PK\u0003\u0004 not really a zip') });
   await expect(page.locator('.message')).toContainText('the factory presets were not found in this file');
 });

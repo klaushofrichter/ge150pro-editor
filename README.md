@@ -81,7 +81,8 @@ read-only.
   [WebHID](https://developer.mozilla.org/docs/Web/API/WebHID_API). Safari and Firefox do not support it.
   Phones cannot connect and get a short "desktop only" notice instead of the editor (with a way to look anyway).
 - The pedal connected by USB, and Mooer's editor closed: only one program can use the pedal at a time.
-- Tested with firmware V2.1.2.
+- Tested with firmware V2.1.2. The editor cannot read or update the pedal's firmware: to update it, use Mooer's own
+  editor from the GE150 Pro download.
 - **Linux:** Chrome needs permission to open the pedal, otherwise connecting fails with "Could not open the GE150 Pro".
   Add a udev rule once, then unplug and replug the pedal:
 
