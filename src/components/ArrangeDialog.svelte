@@ -8,6 +8,7 @@
   } from '../lib/arrange';
   import { askPresetName, dirFiles, downloadText, errorText, folderSupported, pickDirectory } from '../lib/files';
   import { factoryFromFile } from '../lib/firmware';
+  import { MOOER_DOWNLOADS, MOOER_HOME } from '../lib/links';
   import { deleteBackup, listBackups, ORIGINAL_ID, saveBackup, type Backup } from '../lib/backups';
   import { moToPreset, type MoFile } from '../lib/protocol/mo';
   import { presetLabel, type Preset } from '../lib/protocol/preset';
@@ -520,6 +521,11 @@
         <button class="btn" disabled={editor.busy || !folderSupported()} onclick={importMoFolder}>Place a folder of .mo files…</button>
         {#if !original}
           <label class="btn">Read the factory presets from Mooer's download (.zip, .dmg or .mr)<input type="file" accept=".zip,.dmg,.mr" hidden onchange={importFirmware} /></label>
+          <p class="muted small download-hint">
+            Get the GE150 Pro package <strong>for Mac</strong> (works on any computer) from
+            <a href={MOOER_DOWNLOADS} target="_blank" rel="noopener">Mooer's download page</a>. If that link no longer
+            works, start at <a href={MOOER_HOME} target="_blank" rel="noopener">mooeraudio.com</a>.
+          </p>
         {/if}
       </div>
       <ul>
@@ -782,6 +788,9 @@
     cursor: default;
   }
 
+  .download-hint {
+    margin: 0 0 4px;
+  }
   .backups {
     overflow-y: auto;
     border-left: 1px solid var(--line);

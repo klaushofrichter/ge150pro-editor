@@ -57,7 +57,8 @@ only to describe what the pedal does.
 
 They come with Mooer's own editor download; this repository contains no firmware and nothing taken from it.
 
-1. On [Mooer's download page](https://www.mooeraudio.com/Downloads_xq/6.html), download the GE150 Pro package **for
+1. On [Mooer's download page](https://www.mooeraudio.com/Downloads_xq/6.html) (if that link moved, start at
+   [mooeraudio.com](https://www.mooeraudio.com)), download the GE150 Pro package **for
    Mac** (a `.zip`). It works on any computer: nothing gets installed, the editor only reads the file.
 2. In the editor, open **Arrange and back up presets** (the grid icon next to PRESET) and, under **Backups**, choose
    **Read the factory presets from Mooer's download**, then the `.zip`.

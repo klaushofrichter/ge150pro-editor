@@ -34,14 +34,13 @@
 
 <script lang="ts">
   import { onMount } from 'svelte';
+  import { MOOER_DOWNLOADS as DOWNLOADS, MOOER_HOME, MOOER_PRODUCT as PRODUCT } from '../lib/links';
 
   /** `accepted`: opened again from the About button, so it can simply be closed. */
   let { onconfirm, accepted = false }: { onconfirm: () => void; accepted?: boolean } = $props();
   let button: HTMLButtonElement | undefined = $state();
 
   const REPO = 'https://github.com/klaushofrichter/ge150pro-editor';
-  const PRODUCT = 'https://www.mooeraudio.com/products/207.html';
-  const DOWNLOADS = 'https://www.mooeraudio.com/Downloads_xq/6.html';
 
   onMount(() => button?.focus());
 
@@ -78,7 +77,8 @@
     <li>
       On <a href={DOWNLOADS} target="_blank" rel="noopener">Mooer's download page</a>, download the GE150 Pro package
       <strong>for Mac</strong> (a <code>.zip</code>, for example <code>ge150_pro_v2.1.4_mac.zip</code>). It works on any
-      computer: nothing gets installed, the editor only reads the file.
+      computer: nothing gets installed, the editor only reads the file. If that link no longer works, start at
+      <a href={MOOER_HOME} target="_blank" rel="noopener">mooeraudio.com</a> and look for the GE150 Pro downloads.
     </li>
     <li>
       Here, click the grid icon next to <strong>PRESET</strong> (Arrange and back up presets). In the
