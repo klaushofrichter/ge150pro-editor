@@ -1,0 +1,25 @@
+# The Mooer pages the editor links to (src/lib/links.ts) still answer and still offer the GE150 Pro package. Runs every
+# day and on pull requests; a failure here means the links need updating, not that the editor is broken, so this is
+# not a required check.
+name: Mooer links
+on:
+  schedule:
+    - cron: '17 6 * * *'
+  pull_request:
+    branches: [main, production]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  links:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci
+      - run: npm run test:links
