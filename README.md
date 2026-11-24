@@ -35,8 +35,9 @@ only to describe what the pedal does.
 
 ![Arranging: swapped presets and banks are highlighted, M and N mark presets that differ from the original set](docs/screenshots/arrange.png)
 
-- **Arrange** the 200 slots on one screen: drag a preset onto another to swap them, drag a bank's title to swap whole
-  banks. Click a slot to **make it empty**, **duplicate** the preset into another slot under a new name (or
+- **Arrange** the 200 slots on one screen: drag a preset by its name onto another to swap them, drag a bank by its
+  title onto another bank to swap whole banks (Undo takes either back; a thin frame shows where it lands, and the list
+  scrolls at its top and bottom edge). Click a slot to **make it empty**, **duplicate** the preset into another slot under a new name (or
   Option-drag it), **rename** it, or **replace it with a `.mo` file**, for example one downloaded from elsewhere (pick
   it, or drop it from the Finder onto the slot). Every change is pending, highlighted and can be undone.
 - **Write** the changed slots to the pedal: after a warning, the editor saves a backup of the pedal, writes each slot

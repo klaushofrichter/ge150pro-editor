@@ -65,12 +65,52 @@
   }
 
   // ---- drag and drop ---------------------------------------------------------------------------------------------
-  const drag = (e: DragEvent, what: string) => {
+  /** What is being dragged here: a bank, a slot's preset or a tray chip (null: nothing, or a file from outside). */
+  let dragging: { kind: string; n: number } | null = $state(null);
+  const drag = (e: DragEvent, what: string, image?: Element | null) => {
     // Option (Alt) while dragging a preset: copy it instead of swapping
     const copy = e.altKey && what.startsWith('slot:');
     e.dataTransfer?.setData('text/plain', copy ? what.replace('slot:', 'copy:') : what);
     if (e.dataTransfer) e.dataTransfer.effectAllowed = copy ? 'copy' : 'move';
+    // the whole slot or bank goes with the pointer, not just the name or title that was grabbed
+    if (image && e.dataTransfer) e.dataTransfer.setDragImage(image, 12, 10);
+    const [kind, n] = what.split(':');
+    dragging = { kind, n: Number(n) };
+    startAutoScroll();
   };
+  function dragEnd() {
+    dragging = null;
+    dragOver = '';
+    stopAutoScroll();
+  }
+
+  // While dragging, the grid scrolls when the pointer is near its top or bottom edge, or beyond it, so every bank and
+  // slot can be reached; a drop outside the grid does nothing.
+  let banksEl: HTMLElement | undefined = $state();
+  let pointerY: number | null = null;
+  let scrollFrame = 0;
+  const EDGE = 48;
+  function startAutoScroll() {
+    cancelAnimationFrame(scrollFrame);
+    const step = () => {
+      const el = banksEl;
+      if (el && pointerY !== null) {
+        const r = el.getBoundingClientRect();
+        const up = r.top + EDGE - pointerY;
+        const down = pointerY - (r.bottom - EDGE);
+        // faster the closer to (or further past) the edge: up to 20 px per frame
+        if (up > 0) el.scrollTop -= Math.min(20, Math.ceil(up / 4));
+        else if (down > 0) el.scrollTop += Math.min(20, Math.ceil(down / 4));
+      }
+      scrollFrame = requestAnimationFrame(step);
+    };
+    scrollFrame = requestAnimationFrame(step);
+  }
+  function stopAutoScroll() {
+    cancelAnimationFrame(scrollFrame);
+    pointerY = null;
+  }
+  onMount(() => stopAutoScroll);
   /** What a drop carries: "slot:3", "copy:3", "bank:7" or "tray:0". */
   const dropped = (e: DragEvent) => {
     const [kind, n] = (e.dataTransfer?.getData('text/plain') ?? '').split(':');
@@ -133,9 +173,20 @@
     if (file && selected !== null) replaceWithMo(file, selected);
   }
 
+  /** A slot under a dragged preset, tray chip or file (a dragged bank goes to the bank instead). */
+  function overSlot(e: DragEvent, slot: number) {
+    if (dragging?.kind === 'bank') return;
+    over(e, `slot:${slot}`);
+  }
+  function overBank(e: DragEvent, bank: number) {
+    if (dragging?.kind !== 'bank') return;
+    over(e, `bank:${bank}`);
+  }
+
   function dropOnSlot(e: DragEvent, slot: number) {
+    if (dragging?.kind === 'bank') return; // the bank takes it
     e.preventDefault();
-    dragOver = '';
+    dragEnd();
     const file = e.dataTransfer?.files?.[0];
     if (file) {
       if (file.name.toLowerCase().endsWith('.mo')) replaceWithMo(file, slot);
@@ -153,8 +204,9 @@
   }
 
   function dropOnBank(e: DragEvent, bank: number) {
+    if (dragging?.kind !== 'bank') return;
     e.preventDefault();
-    dragOver = '';
+    dragEnd();
     const { kind, n } = dropped(e);
     if (kind === 'bank' && n !== bank) change(swapBanks(layout, n, bank));
   }
@@ -342,7 +394,11 @@
   const estimate = (n: number) => Math.ceil((n * 0.6) / 5) * 5;
 </script>
 
-<svelte:window onkeydown={(e) => e.key === 'Escape' && !editor.busy && !confirming && onclose()} />
+<svelte:window
+  onkeydown={(e) => e.key === 'Escape' && !editor.busy && !confirming && onclose()}
+  ondragover={(e) => dragging && (pointerY = e.clientY)}
+  ondragend={dragEnd}
+/>
 <div class="backdrop" role="presentation"></div>
 <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="arrange-title">
   <header>
@@ -353,7 +409,7 @@
   <div class="layout">
     <section class="arrange">
       <div class="bar">
-        <span class="muted">Showing {showing}. Drag a preset onto another to swap them; drag a bank's title to swap whole banks.</span>
+        <span class="muted">Showing {showing}. Drag a preset by its name onto another to swap the two; drag a bank by its title onto another bank to swap whole banks. Near the top or bottom edge the list scrolls.</span>
         <span class="grow"></span>
         <button class="btn" disabled={!history.length || editor.busy} onclick={undo}>Undo</button>
         <button class="btn" disabled={editor.busy} onclick={() => show(editor.pedalLayout(), 'the pedal')}>Show the pedal</button>
@@ -390,23 +446,31 @@
         <div class="tray" aria-label="Presets without a slot">
           <strong>Without a slot:</strong>
           {#each tray as t, k (k)}
-            <span class="chip" draggable="true" role="listitem" ondragstart={(e) => drag(e, `tray:${k}`)} title={t.file}>{t.preset.name}</span>
+            <span class="chip" draggable="true" role="listitem" ondragstart={(e) => drag(e, `tray:${k}`)} ondragend={dragEnd} title={t.file}>{t.preset.name}</span>
           {/each}
         </div>
       {/if}
 
-      <div class="banks">
+      <div class="banks" bind:this={banksEl}>
         {#each Array.from({ length: BANK_COUNT }, (_, b) => b) as b (b)}
-          <div class="bank" class:target={dragOver === `bank:${b}`}>
+          <div
+            class="bank"
+            class:target={dragOver === `bank:${b}`}
+            class:dragged={dragging?.kind === 'bank' && dragging.n === b}
+            role="group"
+            aria-label="Bank {b + 1}"
+            ondragover={(e) => overBank(e, b)}
+            ondragleave={(e) => !e.currentTarget.contains(e.relatedTarget as Node) && (dragOver = '')}
+            ondrop={(e) => dropOnBank(e, b)}
+          >
             <div
               class="bank-title"
               draggable={!editor.busy}
               role="button"
               tabindex="-1"
-              ondragstart={(e) => drag(e, `bank:${b}`)}
-              ondragover={(e) => over(e, `bank:${b}`)}
-              ondragleave={() => (dragOver = '')}
-              ondrop={(e) => dropOnBank(e, b)}
+              title="Drag onto another bank to swap the two"
+              ondragstart={(e) => drag(e, `bank:${b}`, e.currentTarget.parentElement)}
+              ondragend={dragEnd}
             >
               Bank {b + 1}
             </div>
@@ -420,21 +484,26 @@
                 class:unused={origin === 'empty'}
                 class:copying={copyFrom !== null}
                 class:target={dragOver === `slot:${i}`}
+                class:dragged={dragging?.kind === 'slot' && dragging.n === i}
                 class:selected={selected === i}
-                draggable={!!p && !editor.busy}
                 role="button"
                 tabindex="0"
                 aria-pressed={selected === i}
                 title={p ? `${label(i)} ${p.name}` : `${label(i)} (no preset)`}
-                ondragstart={(e) => drag(e, `slot:${i}`)}
-                ondragover={(e) => over(e, `slot:${i}`)}
-                ondragleave={() => (dragOver = '')}
+                ondragover={(e) => overSlot(e, i)}
+                ondragleave={(e) => !e.currentTarget.contains(e.relatedTarget as Node) && (dragOver = '')}
                 ondrop={(e) => dropOnSlot(e, i)}
                 onclick={() => clickSlot(i)}
                 onkeydown={(e) => e.key === 'Enter' && clickSlot(i)}
               >
                 <span class="letter">{'ABCD'[i % 4]}</span>
-                <span class="name">{p?.name ?? '—'}</span>
+                <span
+                  class="name"
+                  draggable={!!p && !editor.busy}
+                  role="presentation"
+                  ondragstart={(e) => drag(e, `slot:${i}`, e.currentTarget.parentElement)}
+                  ondragend={dragEnd}>{p?.name ?? '—'}</span
+                >
                 {#if origin === 'modified'}<span class="mark modified" title="Modified: the original has this name with another sound">M</span>{:else if origin === 'new'}<span class="mark new" title="New: not in the original set">N</span>{/if}
               </div>
             {/each}
@@ -635,8 +704,15 @@
     padding: 4px;
     border: 1px solid transparent;
   }
-  .bank.target {
-    border-color: var(--accent);
+  /* where a dragged bank or preset lands: a thin frame in a color of its own (green marks changes, white the selection) */
+  .bank.target,
+  .slot.target {
+    outline: 1px solid var(--warn);
+    outline-offset: 1px;
+  }
+  .bank.dragged,
+  .slot.dragged {
+    opacity: 0.45;
   }
   .bank-title {
     font-size: 0.75rem;
@@ -652,7 +728,7 @@
     padding: 3px 4px;
     border-radius: 3px;
     border: 1px solid transparent;
-    cursor: grab;
+    cursor: pointer;
     white-space: nowrap;
     overflow: hidden;
   }
@@ -661,8 +737,12 @@
     width: 0.8em;
   }
   .slot .name {
+    flex: 1;
     overflow: hidden;
     text-overflow: ellipsis;
+  }
+  .slot .name[draggable='true'] {
+    cursor: grab;
   }
   .slot.changed {
     border-color: var(--accent);
@@ -701,10 +781,7 @@
     opacity: 0.45;
     cursor: default;
   }
-  .slot.target {
-    background: var(--panel);
-    border-color: var(--text);
-  }
+
   .backups {
     overflow-y: auto;
     border-left: 1px solid var(--line);
