@@ -1,5 +1,8 @@
 # A push to production builds the app and publishes it on GitHub Pages, with a calendar version (YYYY.MM.DD.N)
 # shown in the app's tools panel and recorded as a GitHub release.
+# Two jobs, as in GitHub's Pages starter workflow: deploy-pages in the same job as the upload sometimes found no
+# artifact (2026-11-24, four times, even after the artifact API listed it); a separate job starts after the upload
+# is complete.
 name: Deploy to GitHub Pages
 on:
   push:
@@ -7,21 +10,17 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write # the release
-  pages: write
-  id-token: write
-  actions: read # to see the uploaded artifact listed
+  contents: read
 
 concurrency:
   group: pages
   cancel-in-progress: false
 
 jobs:
-  deploy:
+  build:
     runs-on: ubuntu-latest
-    environment:
-      name: github-pages
-      url: ${{ steps.pages.outputs.page_url }}
+    outputs:
+      version: ${{ steps.version.outputs.version }}
     steps:
       - uses: actions/checkout@v7
         with:
@@ -45,23 +44,22 @@ jobs:
       - uses: actions/upload-pages-artifact@v5
         with:
           path: dist
-      # deploy-pages looks the artifact up once, right away; GitHub sometimes lists a new artifact only seconds later
-      # (2026-11-24: "No artifacts named github-pages" three times in a row), so wait until it is listed
-      - name: Wait for the artifact to be listed
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          for i in $(seq 1 30); do
-            n=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID/artifacts" --jq '[.artifacts[] | select(.name == "github-pages")] | length')
-            [ "$n" -gt 0 ] && exit 0
-            sleep 4
-          done
-          echo "::error::the github-pages artifact was not listed after 2 minutes"
-          exit 1
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # the release
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.pages.outputs.page_url }}
+    steps:
       - id: pages
         uses: actions/deploy-pages@v5
       - name: Release
         env:
           GH_TOKEN: ${{ github.token }}
-          VERSION: ${{ steps.version.outputs.version }}
-        run: gh release create "v$VERSION" --target "$GITHUB_SHA" --title "$VERSION" --notes "Published at ${{ steps.pages.outputs.page_url }}"
+          VERSION: ${{ needs.build.outputs.version }}
+        run: gh release create "v$VERSION" --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --title "$VERSION" --notes "Published at ${{ steps.pages.outputs.page_url }}"
