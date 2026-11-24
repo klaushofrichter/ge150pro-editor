@@ -525,6 +525,7 @@
             Get the GE150 Pro package <strong>for Mac</strong> (works on any computer) from
             <a href={MOOER_DOWNLOADS} target="_blank" rel="noopener">Mooer's download page</a>. If that link no longer
             works, start at <a href={MOOER_HOME} target="_blank" rel="noopener">mooeraudio.com</a>.
+            This editor does not update the pedal's firmware: for a firmware update, use Mooer's own editor from that package.
           </p>
         {/if}
       </div>
