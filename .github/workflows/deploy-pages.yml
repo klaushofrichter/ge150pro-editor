@@ -10,6 +10,7 @@ permissions:
   contents: write # the release
   pages: write
   id-token: write
+  actions: read # to see the uploaded artifact listed
 
 concurrency:
   group: pages
@@ -44,6 +45,19 @@ jobs:
       - uses: actions/upload-pages-artifact@v5
         with:
           path: dist
+      # deploy-pages looks the artifact up once, right away; GitHub sometimes lists a new artifact only seconds later
+      # (2026-11-24: "No artifacts named github-pages" three times in a row), so wait until it is listed
+      - name: Wait for the artifact to be listed
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          for i in $(seq 1 30); do
+            n=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID/artifacts" --jq '[.artifacts[] | select(.name == "github-pages")] | length')
+            [ "$n" -gt 0 ] && exit 0
+            sleep 4
+          done
+          echo "::error::the github-pages artifact was not listed after 2 minutes"
+          exit 1
       - id: pages
         uses: actions/deploy-pages@v5
       - name: Release
