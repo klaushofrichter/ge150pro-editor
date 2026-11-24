@@ -23,13 +23,14 @@ only to describe what the pedal does.
 
 | Area | |
 |---|---|
-| Presets | All 200 presets (banks 1–50, A–D): select, rename, store, step through them; unsaved changes are marked |
+| Presets | All 200 presets (banks 1–50, A–D): select, rename, store, step through them; unsaved changes are marked, and switching away from them asks first (save, discard or stay) |
 | Effects | The nine modules (FX/COMP, DS/OD, AMP, CAB, NS GATE, EQ, MOD, DELAY, REVERB): on/off, model and every parameter, in real time and in both directions (turn a knob on the pedal and the slider follows) |
-| Expression pedal | Module and parameter it controls, EXP VOL switch and range, the controlled value live |
-| System | Input and USB levels, display brightness, cab simulation on the outputs, global EQ, spill-over, display language |
+| Expression pedal | EXP mode: the module and parameter the pedal moves. Volume mode: on/off, MIN and MAX. The mode the pedal is in now (switch it here like the toe switch), and an on-screen pedal that follows the real one and can be dragged to move the value |
+| System | Input and USB levels, display brightness, cab simulation on the outputs, global EQ, spill-over, display language, all presets to one backup file |
 | Drum machine | Shows play state, mode, style, BPM and volume (the pedal does not accept drum machine control over USB) |
 | Files | Import and export `.mo` presets, compatible with Mooer's editor; browse a folder of `.mo` files |
 | Arrange and back up | See below |
+| Tools | Revert unsaved changes, a self-test that sets a few silent values and reads them back (nothing is stored), the USB message log |
 
 ### Arrange and back up
 
@@ -43,7 +44,7 @@ only to describe what the pedal does.
 - **Write** the changed slots to the pedal: after a warning, the editor saves a backup of the pedal, writes each slot
   (about a third of a second per preset, a progress bar shows where it is, and it can stop between presets), then
   reads every preset back and compares.
-- **Backups** are kept in the browser. Export one as a single file, or as a folder of `.mo` files named `01A Name.mo`
+- **Backups** are kept in the browser; **Back up the pedal now** takes one at any time. Export one as a single file, or as a folder of `.mo` files named `01A Name.mo`
   … `50D Name.mo` with a `manifest.json` that describes the set (name, kind, dates, where it came from, a checksum per
   file). Importing a folder places it by its manifest and reports any file that has changed since.
 - **The original:** the factory presets become a locked backup that cannot be changed or deleted. Presets are then
@@ -97,12 +98,13 @@ read-only.
 
 - On the first visit a panel explains what the editor is, how to get the factory presets in, and links the
   [terms of use](https://klaushofrichter.github.io/ge150pro-editor/terms.html) ([TERMS.md](TERMS.md)): you use it at
-  your own risk. It stays away once the terms are accepted (remembered in the
-  browser, until the terms change) and the ⓘ button in the header shows it again.
+  your own risk. Once the terms are accepted (remembered in the browser, until the terms change) it opens again only
+  at the start of a browser session in which no pedal is connected, and the ⓘ button in the header shows it any time.
 
   <img src="docs/screenshots/welcome.png" alt="The first-visit panel" width="600">
 
 - The first **Connect device** asks Chrome for permission to use the pedal; the page connects by itself afterwards.
+  When the pedal is unplugged, a warning says so; the presets shown are then those of the last connection.
 - Changes to effects are live on the pedal but not stored until you save the preset (the disk icon). Arrangements are
   written only with **Write … to the pedal**, which always asks first.
 - The editor sends only commands observed between Mooer's editor and the pedal; it never sends a factory reset or a
@@ -125,8 +127,8 @@ npm run screenshots   # renders docs/screenshots/
 Node 26 (`.nvmrc`). Type checking uses TypeScript 7 (`@typescript/native`, through `svelte-check --tsgo`); TypeScript 6
 is installed as `typescript` because svelte-check still needs it. Branches: work on a feature branch, open a pull request to `main`; a release is a pull request
 from `main` to `production`. `production` is protected (the `test`, `e2e` and `codeql` checks must pass), and every
-push to it publishes the app on GitHub Pages with a calendar version (`YYYY.MM.DD.N`, shown in the tools panel and as
-a GitHub release).
+push to it publishes the app on GitHub Pages with a calendar version (`YYYY.MM.DD.N`, shown in the About panel, the tools
+panel and as a GitHub release).
 
 ## License and terms
 
